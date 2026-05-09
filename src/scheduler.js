@@ -104,5 +104,5 @@ export function rescheduleTaskReminders(task, client) {
 }
 
 function isTaskStillActive(task) {
-  return Boolean(task && task.status === 'pending' && task.deadline_ms > Date.now());
+  return Boolean(task && task.status === 'pending');
 }
