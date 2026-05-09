@@ -56,3 +56,36 @@ Dashboard lokal:
 ```text
 http://localhost:3000
 ```
+
+## VPS
+
+Install dependency dasar:
+
+```bash
+sudo apt update
+sudo apt install -y git curl nginx chromium
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+sudo npm install -g pm2
+```
+
+Jika download Chrome dari Puppeteer gagal atau koneksi VPS lambat, pakai Chromium system:
+
+```bash
+PUPPETEER_SKIP_DOWNLOAD=true npm install --no-audit --no-fund
+```
+
+Tambahkan di `.env` VPS:
+
+```env
+CHROME_EXECUTABLE_PATH=/usr/bin/chromium
+ADMIN_COOKIE_SECURE=true
+```
+
+Jalankan proses:
+
+```bash
+pm2 start src/index.js --name reminderbot
+pm2 start admin/server.js --name reminderbot-admin
+pm2 save
+```

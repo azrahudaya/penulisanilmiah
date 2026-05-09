@@ -46,7 +46,11 @@ dayjs.extend(customParseFormat);
 
 const client = new Client({
   authStrategy: new LocalAuth(),
-  puppeteer: { headless: true },
+  puppeteer: {
+    headless: true,
+    ...(config.chromeExecutablePath ? { executablePath: config.chromeExecutablePath } : {}),
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  },
 });
 
 const pendingConfirmations = new Map();

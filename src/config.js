@@ -26,6 +26,7 @@ function resolveExecutablePath(value) {
 const dbPathRaw = process.env.DB_PATH || './data/tasks.db';
 const whisperModelPathRaw = process.env.WHISPER_MODEL_PATH || '';
 const whisperCppPathRaw = process.env.WHISPER_CPP_PATH || 'whisper-cli';
+const chromeExecutablePathRaw = process.env.CHROME_EXECUTABLE_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || '';
 const researchModeRaw = process.env.RESEARCH_MODE || 'false';
 
 function parseBoolean(value) {
@@ -45,6 +46,7 @@ export const config = {
   transcriptionProvider: (process.env.TRANSCRIPTION_PROVIDER || 'auto').toLowerCase(),
   taskParserProvider: (process.env.TASK_PARSER_PROVIDER || 'auto').toLowerCase(),
   openaiWhisperModel: process.env.OPENAI_WHISPER_MODEL || 'whisper-1',
+  chromeExecutablePath: resolveExecutablePath(chromeExecutablePathRaw),
   whisperCppPath: resolveExecutablePath(whisperCppPathRaw),
   whisperModelPath: resolveFromProjectIfRelative(whisperModelPathRaw),
   whisperLanguage: process.env.WHISPER_LANGUAGE || 'id',
