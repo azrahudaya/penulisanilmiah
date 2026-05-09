@@ -1,0 +1,44 @@
+<header class="page-head">
+  <div>
+    <h1>Export</h1>
+    <p>Unduh data penelitian mentah dan ringkasan per responden.</p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/export/respondent-summary.csv">Summary CSV</a>
+  </div>
+</header>
+
+<section class="panel">
+  <h2>Raw Research Logs</h2>
+  <p>CSV ini berisi PII seperti nama, nomor chat, transkrip, dan metadata audio.</p>
+  <form method="get" action="/export/research-logs.csv" class="inline">
+    <label class="check"><input type="checkbox" name="confirm" value="pii" required> Saya paham data ini berisi PII.</label>
+    <button type="submit">Download Raw CSV</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Summary per Respondent</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Nama</th><th>Total</th><th>Avg WER</th><th>Avg Precision</th><th>Avg Recall</th><th>Avg F1</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% summary.forEach((row) => { %>
+          <tr>
+            <td><%= row.respondent_id %></td>
+            <td><%= row.name || '-' %></td>
+            <td><%= row.total_logs || 0 %></td>
+            <td><%= fmt.metric(row.avg_wer) %></td>
+            <td><%= fmt.metric(row.avg_precision) %></td>
+            <td><%= fmt.metric(row.avg_recall) %></td>
+            <td><%= fmt.metric(row.avg_f1) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>

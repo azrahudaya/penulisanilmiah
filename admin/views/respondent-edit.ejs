@@ -1,0 +1,55 @@
+<header class="page-head">
+  <div>
+    <h1>Edit Respondent</h1>
+    <p><a href="/respondents">Kembali</a></p>
+  </div>
+</header>
+
+<% if (error) { %><div class="alert error"><%= error %></div><% } %>
+<% if (success) { %><div class="alert success"><%= success %></div><% } %>
+
+<section class="panel" style="max-width:520px">
+  <form method="post" action="/respondents/<%= respondent.respondent_id %>/edit">
+    <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
+
+    <label>Respondent ID</label>
+    <input type="text" value="<%= respondent.respondent_id %>" disabled>
+
+    <label>Nama</label>
+    <input type="text" name="name" value="<%= respondent.name || '' %>">
+
+    <label>Usia</label>
+    <input type="number" name="age" value="<%= respondent.age || '' %>" min="0" max="120">
+
+    <label>Gender</label>
+    <select name="gender">
+      <option value="Laki-laki" <%= respondent.gender === 'Laki-laki' ? 'selected' : '' %>>Laki-laki</option>
+      <option value="Perempuan" <%= respondent.gender === 'Perempuan' ? 'selected' : '' %>>Perempuan</option>
+    </select>
+
+    <label>Kesibukan / Pekerjaan</label>
+    <input type="text" name="occupation" value="<%= respondent.occupation || '' %>">
+
+    <label>Reminder</label>
+    <input type="text" value="H-10 menit, Saat deadline" disabled>
+
+    <label>Consent Status</label>
+    <select name="consent_status">
+      <option value="consented" <%= respondent.consent_status === 'consented' ? 'selected' : '' %>>consented</option>
+      <option value="declined" <%= respondent.consent_status === 'declined' ? 'selected' : '' %>>declined</option>
+      <option value="unconfirmed" <%= respondent.consent_status === 'unconfirmed' ? 'selected' : '' %>>unconfirmed</option>
+    </select>
+
+    <label>Registration Step</label>
+    <select name="registration_step">
+      <% ['completed','name','age','gender','occupation','consent','declined','not_started'].forEach((step) => { %>
+        <option value="<%= step %>" <%= respondent.registration_step === step ? 'selected' : '' %>><%= step %></option>
+      <% }) %>
+    </select>
+
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button type="submit">Simpan</button>
+      <a class="btn ghost" href="/respondents">Batal</a>
+    </div>
+  </form>
+</section>

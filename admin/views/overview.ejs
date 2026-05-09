@@ -1,0 +1,90 @@
+<header class="page-head">
+  <div>
+    <h1>Overview</h1>
+    <p>Ringkasan metrik dan log penelitian.</p>
+  </div>
+</header>
+
+<% if (success) { %><div class="alert success"><%= success %></div><% } %>
+
+<section class="metrics">
+  <div><span>Total</span><strong><%= stats.total || 0 %></strong></div>
+  <div><span>Reviewed</span><strong><%= stats.reviewed || 0 %></strong></div>
+  <div><span>Pending</span><strong><%= stats.pending || 0 %></strong></div>
+  <div><span>Excluded</span><strong><%= stats.excluded || 0 %></strong></div>
+  <div><span>Avg WER</span><strong><%= fmt.metric(stats.avg_wer) %></strong></div>
+  <div><span>Avg F1</span><strong><%= fmt.metric(stats.avg_f1) %></strong></div>
+</section>
+
+<section class="panel setting-panel">
+  <div>
+    <h2>Mode Saran</h2>
+    <p>Bot meminta saran 1 kalimat setelah VN tersimpan, maksimal sampai VN ke-10 per responden.</p>
+  </div>
+  <form method="post" action="/settings/feedback-prompt">
+    <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
+    <input type="hidden" name="enabled" value="<%= feedbackPromptEnabled ? 'false' : 'true' %>">
+    <button class="<%= feedbackPromptEnabled ? 'danger' : '' %>" type="submit">
+      <%= feedbackPromptEnabled ? 'Matikan' : 'Nyalakan' %>
+    </button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Saran Terbaru</h2>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Responden</th><th>Nama</th><th>VN ke</th><th>Saran</th><th>Dibuat</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (!feedback.length) { %>
+          <tr><td colspan="5" class="empty">Belum ada saran.</td></tr>
+        <% } %>
+        <% feedback.forEach((item) => { %>
+          <tr>
+            <td><%= item.respondent_id || '-' %></td>
+            <td><%= item.name || '-' %></td>
+            <td><%= item.voice_note_count || '-' %></td>
+            <td><%= item.feedback_text %></td>
+            <td><%= item.createdText %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Recent Logs</h2>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Responden</th><th>Nama</th><th>Status</th><th>Konfirmasi</th><th>WER</th><th>F1</th><th>Audio</th><th>Dibuat</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% logs.forEach((log) => { %>
+          <tr>
+            <td><a href="/review?id=<%= log.id %>">#<%= log.id %></a></td>
+            <td><%= log.respondent_id || '-' %></td>
+            <td><%= log.name || '-' %></td>
+            <td><span class="badge"><%= log.status %></span></td>
+            <td><%= log.confirmation_status || '-' %></td>
+            <td><%= fmt.metric(log.wer_score) %></td>
+            <td><%= fmt.metric(log.f1_score) %></td>
+            <td><%= log.audioExists ? 'Ada' : '-' %></td>
+            <td><%= log.createdText %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login Admin</title>
+  <link rel="stylesheet" href="/public/styles.css">
+</head>
+<body class="login-page">
+  <form class="login-card" method="post" action="/login">
+    <h1>Research Admin</h1>
+    <p>Masuk untuk review data penelitian.</p>
+    <% if (passwordUnsafe) { %>
+      <div class="alert error">Set <code>DASHBOARD_PASSWORD</code> yang kuat di <code>.env</code>.</div>
+    <% } %>
+    <% if (sessionSecretUnsafe) { %>
+      <div class="alert error">Set <code>ADMIN_SESSION_SECRET</code> minimal 32 karakter acak di <code>.env</code>.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert error"><%= error %></div>
+    <% } %>
+    <label>Password</label>
+    <input type="password" name="password" autofocus required>
+    <button type="submit">Masuk</button>
+  </form>
+</body>
+</html>

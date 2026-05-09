@@ -1,0 +1,25 @@
+.env
+.env.local
+node_modules/
+
+# WhatsApp Web session credentials
+src/.wwebjs_auth/
+src/.wwebjs_cache/
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Research data and local database
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/audio/
+
+# Python/Streamlit local artifacts
+__pycache__/
+*.py[cod]
+.streamlit/secrets.toml
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db

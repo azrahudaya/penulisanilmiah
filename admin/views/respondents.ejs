@@ -1,0 +1,81 @@
+<%
+  function sortHref(key) {
+    const nextDir = sort === key && dir === 'asc' ? 'desc' : 'asc';
+    return `/respondents?sort=${encodeURIComponent(key)}&dir=${nextDir}`;
+  }
+  function sortMark(key) {
+    if (sort !== key) return '&#8597;';
+    return dir === 'asc' ? '&#8593;' : '&#8595;';
+  }
+  function sortClass(key) {
+    return sort === key ? 'sort active' : 'sort';
+  }
+%>
+
+<header class="page-head">
+  <div>
+    <h1>Respondents</h1>
+    <p>Data registrasi dari WhatsApp.</p>
+  </div>
+</header>
+
+<% if (error) { %><div class="alert error"><%= error %></div><% } %>
+<% if (success) { %><div class="alert success"><%= success %></div><% } %>
+
+<section class="panel">
+  <div class="table-wrap">
+    <table class="respondents-table">
+      <thead>
+        <tr>
+          <th><a class="<%= sortClass('id') %>" href="<%= sortHref('id') %>">ID <span><%- sortMark('id') %></span></a></th>
+          <th><a class="<%= sortClass('phone') %>" href="<%= sortHref('phone') %>">No. WA <span><%- sortMark('phone') %></span></a></th>
+          <th><a class="<%= sortClass('name') %>" href="<%= sortHref('name') %>">Nama <span><%- sortMark('name') %></span></a></th>
+          <th><a class="<%= sortClass('age') %>" href="<%= sortHref('age') %>">Usia <span><%- sortMark('age') %></span></a></th>
+          <th><a class="<%= sortClass('gender') %>" href="<%= sortHref('gender') %>">Gender <span><%- sortMark('gender') %></span></a></th>
+          <th><a class="<%= sortClass('occupation') %>" href="<%= sortHref('occupation') %>">Kesibukan <span><%- sortMark('occupation') %></span></a></th>
+          <th><a class="<%= sortClass('voice_notes') %>" href="<%= sortHref('voice_notes') %>">VN <span><%- sortMark('voice_notes') %></span></a></th>
+          <th><a class="<%= sortClass('reminder') %>" href="<%= sortHref('reminder') %>">Reminder <span><%- sortMark('reminder') %></span></a></th>
+          <th><a class="<%= sortClass('consent') %>" href="<%= sortHref('consent') %>">Consent <span><%- sortMark('consent') %></span></a></th>
+          <th><a class="<%= sortClass('step') %>" href="<%= sortHref('step') %>">Step <span><%- sortMark('step') %></span></a></th>
+          <th><a class="<%= sortClass('registered') %>" href="<%= sortHref('registered') %>">Terdaftar <span><%- sortMark('registered') %></span></a></th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% respondents.forEach((row) => { %>
+          <tr>
+            <td>
+              <div class="id-cell">
+                <span><%= row.respondent_id %></span>
+                <% if (row.reachedTenVoiceNoteMilestone) { %>
+                  <span class="badge milestone" title="Termasuk 10 responden pertama yang mencapai 10 voice note">10 VN</span>
+                <% } %>
+              </div>
+            </td>
+            <td class="mono"><%= row.waNumber %></td>
+            <td><%= row.name || '-' %></td>
+            <td class="num"><%= row.age || '-' %></td>
+            <td><%= row.gender || '-' %></td>
+            <td><%= row.occupation || '-' %></td>
+            <td class="num"><%= row.voice_note_count || 0 %></td>
+            <td><%= row.reminderText %></td>
+            <td><span class="badge"><%= row.consent_status %></span></td>
+            <td><%= row.registration_step %></td>
+            <td><%= row.registeredText %></td>
+            <td class="actions compact">
+              <a class="icon-btn" href="/respondents/<%= row.respondent_id %>/edit" title="Edit" aria-label="Edit <%= row.respondent_id %>">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5-4-4L4 16v4Zm13.7-13.7 1-1a1.4 1.4 0 0 1 2 2l-1 1-2-2Z"/></svg>
+              </a>
+              <form method="post" action="/respondents/<%= row.respondent_id %>/delete" onsubmit="return confirm('Hapus <%= row.respondent_id %> beserta semua log dan audio-nya?')">
+                <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
+                <button class="icon-btn danger" type="submit" title="Hapus" aria-label="Hapus <%= row.respondent_id %>">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 21a2 2 0 0 1-2-2V7h14v12a2 2 0 0 1-2 2H7ZM9 4h6l1 2h4v2H4V6h4l1-2Z"/></svg>
+                </button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>

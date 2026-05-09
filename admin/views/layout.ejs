@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title || 'Research Admin' %></title>
+  <link rel="stylesheet" href="/public/styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">R</div>
+      <div>
+        <strong>Research Admin</strong>
+        <span>Reminder Bot</span>
+      </div>
+    </div>
+    <nav>
+      <a class="<%= page === 'overview' ? 'active' : '' %>" href="/">Overview</a>
+      <a class="<%= page === 'review' ? 'active' : '' %>" href="/review">Review</a>
+      <a class="<%= page === 'respondents' ? 'active' : '' %>" href="/respondents">Respondents</a>
+      <a class="<%= page === 'export' ? 'active' : '' %>" href="/export">Export</a>
+    </nav>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
+      <button class="ghost" type="submit">Logout</button>
+    </form>
+  </aside>
+  <main class="main">
+    <%- body %>
+  </main>
+  <script src="/public/app.js"></script>
+</body>
+</html>

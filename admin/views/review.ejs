@@ -1,0 +1,92 @@
+<header class="page-head">
+  <div>
+    <h1>Review</h1>
+    <p>Dengarkan audio, isi ground truth, simpan metrik.</p>
+  </div>
+  <form class="inline" method="get" action="/review">
+    <select name="status" onchange="this.form.submit()">
+      <% ['pending_review','reviewed','excluded','all'].forEach((item) => { %>
+        <option value="<%= item %>" <%= status === item ? 'selected' : '' %>><%= item %></option>
+      <% }) %>
+    </select>
+  </form>
+</header>
+
+<% if (error) { %><div class="alert error"><%= error %></div><% } %>
+<% if (success) { %><div class="alert success"><%= success %></div><% } %>
+
+<div class="split">
+  <section class="panel list-panel">
+    <h2>Logs</h2>
+    <% logs.forEach((log) => { %>
+      <a class="log-item <%= selected && selected.id === log.id ? 'active' : '' %>" href="/review?status=<%= status %>&id=<%= log.id %>">
+        <strong>#<%= log.id %> <%= log.name || log.respondent_id || '-' %></strong>
+        <span><%= log.status %> · <%= log.confirmation_status || '-' %></span>
+      </a>
+    <% }) %>
+  </section>
+
+  <section class="panel detail-panel">
+    <% if (!selected) { %>
+      <p class="empty">Belum ada log.</p>
+    <% } else { %>
+      <div class="detail-title">
+        <div>
+          <h2>#<%= selected.id %> · <%= selected.name || selected.respondent_id || '-' %></h2>
+          <p><%= selected.createdText %> · <%= selected.status %></p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <form method="post" action="/review/<%= selected.id %>/exclude" onsubmit="return confirm('Exclude data ini?')">
+            <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
+            <button class="danger" type="submit">Exclude</button>
+          </form>
+          <form method="post" action="/logs/<%= selected.id %>/delete" onsubmit="return confirm('Hapus log #<%= selected.id %>? Data tidak bisa dikembalikan.')">
+            <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
+            <button class="danger" type="submit">Hapus Permanen</button>
+          </form>
+        </div>
+      </div>
+
+      <% if (selected.audioExists) { %>
+        <audio controls src="/audio/<%= selected.audio_filename %>"></audio>
+      <% } else { %>
+        <div class="alert">Audio tidak ditemukan.</div>
+      <% } %>
+
+      <form method="post" action="/review/<%= selected.id %>">
+        <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
+        <label>Transcript Whisper</label>
+        <textarea readonly><%= selected.transcript_whisper || '' %></textarea>
+
+        <div class="subhead">
+          <label>Transcript Ground Truth</label>
+          <button type="button" class="ghost" data-ai-suggest data-log-id="<%= selected.id %>">Auto-fill AI</button>
+        </div>
+        <textarea name="transcript_ground_truth" required><%= selected.transcript_ground_truth || '' %></textarea>
+
+        <div class="subhead">
+          <h3>Ground Truth Tasks</h3>
+          <button type="button" class="ghost" data-add-task>Tambah</button>
+        </div>
+        <div data-task-list>
+          <% const tasks = selected.groundTruth.length ? selected.groundTruth : [{ title: '', date: '', time: '' }]; %>
+          <% tasks.forEach((task) => { %>
+            <div class="task-row">
+              <input name="task_title" placeholder="Judul" value="<%= task.title || '' %>" required>
+              <input name="task_date" placeholder="YYYY-MM-DD" value="<%= task.date || '' %>" required>
+              <input name="task_time" placeholder="HH:mm" value="<%= task.time || '' %>" required>
+              <button type="button" class="ghost" data-remove-task>Hapus</button>
+            </div>
+          <% }) %>
+        </div>
+
+        <details>
+          <summary>Extracted tasks</summary>
+          <pre><%= JSON.stringify(selected.extracted, null, 2) %></pre>
+        </details>
+
+        <button type="submit">Hitung & Simpan</button>
+      </form>
+    <% } %>
+  </section>
+</div>
