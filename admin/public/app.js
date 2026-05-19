@@ -43,6 +43,8 @@ async function handleAiSuggest(button) {
       if (list) {
         list.replaceChildren(...tasks.map((task) => createTaskRow(task)));
       }
+    } else {
+      alert('AI tidak mengembalikan ground truth task.');
     }
   } catch (err) {
     alert('Auto-fill AI gagal: ' + err.message);

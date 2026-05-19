@@ -1,0 +1,25 @@
+<header class="page-head">
+  <div>
+    <h1>Backup Data</h1>
+    <p>Unduh database dan audio penelitian dalam satu file ZIP.</p>
+  </div>
+</header>
+
+<% if (error) { %><div class="alert error"><%= error %></div><% } %>
+
+<section class="metrics">
+  <div><span>Respondents</span><strong><%= stats.respondentCount || 0 %></strong></div>
+  <div><span>Research Logs</span><strong><%= stats.logCount || 0 %></strong></div>
+  <div><span>Feedback</span><strong><%= stats.feedbackCount || 0 %></strong></div>
+  <div><span>Audio WAV</span><strong><%= stats.audioCount || 0 %></strong></div>
+</section>
+
+<section class="panel">
+  <h2>Download Backup ZIP</h2>
+  <p>ZIP berisi salinan aman SQLite dari database dan file WAV penelitian. File <code>.env</code> dan kredensial WhatsApp tidak ikut disertakan.</p>
+  <form method="post" action="/backup/download" class="inline">
+    <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
+    <label class="check"><input type="checkbox" name="confirm" value="pii" required> Saya paham backup ini berisi PII dan audio responden.</label>
+    <button type="submit">Download ZIP</button>
+  </form>
+</section>

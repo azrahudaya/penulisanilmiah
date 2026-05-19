@@ -1,9 +1,11 @@
 import crypto from 'crypto';
 import fs from 'fs';
+import { tmpdir } from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
 import dayjs from 'dayjs';
+import archiver from 'archiver';
 import db, {
   getResearchLog,
   updateResearchLog,
@@ -17,8 +19,10 @@ import { calculateExtractionMetrics, calculateWer, parseJsonList, validateGround
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const audioDir = path.join(rootDir, 'data', 'audio');
+const dataDir = path.join(rootDir, 'data');
 const envPath = path.join(rootDir, '.env');
 const env = { ...loadEnv(envPath), ...process.env };
+const assetVersion = getAssetVersion();
 const app = express();
 const port = Number(env.ADMIN_PORT || 3000);
 const password = env.DASHBOARD_PASSWORD || '';
@@ -62,7 +66,7 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 app.use(readSession);
 app.use((req, res, next) => {
   res.page = (view, data = {}) => {
-    const viewData = { ...data, csrfToken: req.csrfToken };
+    const viewData = { ...data, csrfToken: req.csrfToken, assetVersion };
     app.render(view, viewData, (err, body) => {
       if (err) return next(err);
       res.render('layout', { ...viewData, body });
@@ -183,7 +187,7 @@ app.post('/review/:id/ai-suggest', requireAuth, requireCsrf, async (req, res) =>
   try {
     const { default: OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey: openaiKey });
-    const today = dayjs().format('YYYY-MM-DD');
+    const referenceDate = dayjs(row.created_at || Date.now()).format('YYYY-MM-DD');
 
     const transcription = await openai.audio.transcriptions.create({
       file: fs.createReadStream(audioFile),
@@ -194,12 +198,16 @@ app.post('/review/:id/ai-suggest', requireAuth, requireCsrf, async (req, res) =>
     const transcriptGroundTruth = String(transcription).trim();
 
     const system = `Kamu adalah anotator penelitian NLP bahasa Indonesia.
-Ekstrak semua tugas/reminder dari transcript berikut -> hasilkan array "tasks".
+Tugasmu: isi ground truth task dari transcript voice note.
 
 Aturan:
-- Tanggal referensi hari ini: ${today} (zona waktu WIB, UTC+7)
+- Tanggal referensi saat voice note dikirim: ${referenceDate} (WIB, UTC+7)
 - Jam default: pagi=09:00, siang=13:00, sore=17:00, malam=21:00
 - Format tanggal: YYYY-MM-DD, format jam: HH:mm
+- Jika ada reminder/tugas, tasks WAJIB berisi minimal 1 item.
+- Jangan hanya mengulang transcript. Ekstrak title, date, dan time.
+- Title harus singkat dan tanpa kata "ingatkan", "reminder", atau waktu.
+- Jika ada beberapa tugas, buat beberapa item.
 
 Output wajib JSON (tidak ada teks lain):
 {"tasks":[{"title":"...","date":"YYYY-MM-DD","time":"HH:mm"}]}`;
@@ -210,14 +218,19 @@ Output wajib JSON (tidak ada teks lain):
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: system },
-        { role: 'user', content: transcriptGroundTruth },
+        { role: 'user', content: `Transcript:\n${transcriptGroundTruth}` },
       ],
     });
 
     const parsed = JSON.parse(resp.choices[0].message.content || '{}');
     if (!Array.isArray(parsed.tasks)) throw new Error('Output AI tidak valid');
 
-    res.json({ transcriptGroundTruth, tasks: normalizeAiSuggestedTasks(parsed.tasks) });
+    let tasks = normalizeAiSuggestedTasks(parsed.tasks);
+    if (!tasks.length) {
+      tasks = normalizeAiSuggestedTasks(parseJsonList(row.extracted_tasks));
+    }
+
+    res.json({ transcriptGroundTruth, tasks });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Gagal memanggil AI' });
   }
@@ -326,6 +339,22 @@ app.get('/export/respondent-summary.csv', requireAuth, (req, res) => {
   sendCsv(res, 'respondent_summary.csv', getRespondentSummary());
 });
 
+app.get('/backup', requireAuth, (req, res) => {
+  res.page('backup', { title: 'Backup Data', page: 'backup', stats: getBackupStats(), fmt, error: req.query.error || '' });
+});
+
+app.post('/backup/download', requireAuth, requireCsrf, async (req, res, next) => {
+  if (req.body.confirm !== 'pii') {
+    res.redirect('/backup?error=' + encodeURIComponent('Centang konfirmasi sebelum download backup.'));
+    return;
+  }
+  try {
+    await sendBackupZip(res);
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.listen(port, () => {
   console.log(`Admin dashboard: http://localhost:${port}`);
 });
@@ -338,6 +367,15 @@ function loadEnv(file) {
     const [key, ...rest] = trimmed.split('=');
     return [key.trim(), rest.join('=').trim()];
   }).filter(Boolean));
+}
+
+function getAssetVersion() {
+  try {
+    const stat = fs.statSync(path.join(__dirname, 'public', 'app.js'));
+    return String(Math.round(stat.mtimeMs));
+  } catch {
+    return String(Date.now());
+  }
 }
 
 function isPasswordSafe() {
@@ -589,6 +627,84 @@ function getRespondentSummary() {
     GROUP BY r.chat_id
     ORDER BY r.respondent_id
   `).all();
+}
+
+function getBackupStats() {
+  const audio = getResearchAudioStats();
+  return {
+    dbPath: path.join(dataDir, 'tasks.db'),
+    audioCount: audio.count,
+    audioBytes: audio.bytes,
+    respondentCount: db.prepare('SELECT COUNT(*) AS total FROM research_respondents').get().total || 0,
+    logCount: db.prepare('SELECT COUNT(*) AS total FROM research_logs').get().total || 0,
+    feedbackCount: db.prepare('SELECT COUNT(*) AS total FROM research_feedback').get().total || 0,
+  };
+}
+
+function getResearchAudioStats() {
+  if (!fs.existsSync(audioDir)) return { count: 0, bytes: 0 };
+  let count = 0;
+  let bytes = 0;
+  for (const entry of fs.readdirSync(audioDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !/^vn-[A-Za-z0-9-]+\.wav$/.test(entry.name)) continue;
+    const file = path.join(audioDir, entry.name);
+    const stat = fs.statSync(file);
+    count += 1;
+    bytes += stat.size;
+  }
+  return { count, bytes };
+}
+
+async function sendBackupZip(res) {
+  const stamp = dayjs().format('YYYYMMDD-HHmmss');
+  const backupDbPath = path.join(tmpdir(), `reminderbot-tasks-${stamp}-${crypto.randomBytes(6).toString('hex')}.db`);
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    fs.unlink(backupDbPath, () => {});
+  };
+
+  await db.backup(backupDbPath);
+
+  const stats = getBackupStats();
+  const manifest = {
+    app: 'reminderbot',
+    created_at: new Date().toISOString(),
+    contains_pii: true,
+    includes: ['database/tasks.db', 'audio/*.wav', 'manifest.json'],
+    excludes: ['.env', 'WhatsApp session credentials', 'node_modules'],
+    stats: {
+      respondents: stats.respondentCount,
+      research_logs: stats.logCount,
+      feedback: stats.feedbackCount,
+      audio_files: stats.audioCount,
+      audio_bytes: stats.audioBytes,
+    },
+  };
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="reminderbot-backup-${stamp}.zip"`);
+
+  const archive = archiver('zip', { zlib: { level: 9 } });
+  archive.on('error', (err) => {
+    cleanup();
+    res.destroy(err);
+  });
+  res.on('finish', cleanup);
+  res.on('close', cleanup);
+  archive.pipe(res);
+
+  archive.file(backupDbPath, { name: 'database/tasks.db' });
+  if (fs.existsSync(audioDir)) {
+    for (const entry of fs.readdirSync(audioDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !/^vn-[A-Za-z0-9-]+\.wav$/.test(entry.name)) continue;
+      archive.file(path.join(audioDir, entry.name), { name: `audio/${entry.name}` });
+    }
+  }
+  archive.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });
+  archive.append('Backup ini berisi data penelitian dan PII. Jangan dibagikan tanpa izin.\n.env dan kredensial WhatsApp tidak disertakan.\n', { name: 'README-backup.txt' });
+  await archive.finalize();
 }
 
 function sendCsv(res, filename, rows) {

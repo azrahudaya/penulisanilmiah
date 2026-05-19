@@ -20,6 +20,7 @@
       <a class="<%= page === 'review' ? 'active' : '' %>" href="/review">Review</a>
       <a class="<%= page === 'respondents' ? 'active' : '' %>" href="/respondents">Respondents</a>
       <a class="<%= page === 'export' ? 'active' : '' %>" href="/export">Export</a>
+      <a class="<%= page === 'backup' ? 'active' : '' %>" href="/backup">Backup Data</a>
     </nav>
     <form method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
@@ -29,6 +30,6 @@
   <main class="main">
     <%- body %>
   </main>
-  <script src="/public/app.js"></script>
+  <script src="/public/app.js?v=<%= assetVersion %>"></script>
 </body>
 </html>
