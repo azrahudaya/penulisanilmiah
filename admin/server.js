@@ -217,7 +217,7 @@ Output wajib JSON (tidak ada teks lain):
     const parsed = JSON.parse(resp.choices[0].message.content || '{}');
     if (!Array.isArray(parsed.tasks)) throw new Error('Output AI tidak valid');
 
-    res.json({ transcriptGroundTruth, tasks: parsed.tasks });
+    res.json({ transcriptGroundTruth, tasks: normalizeAiSuggestedTasks(parsed.tasks) });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Gagal memanggil AI' });
   }
@@ -478,6 +478,18 @@ function normalizeTasksFromBody(body) {
     date: String(dates[idx] || '').trim(),
     time: String(times[idx] || '').trim(),
   })).filter((task) => task.title || task.date || task.time);
+}
+
+function normalizeAiSuggestedTasks(tasks) {
+  return tasks.map((task) => {
+    const deadline = String(task.deadline_iso || task.deadline || '');
+    const deadlineMatch = deadline.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})/);
+    return {
+      title: String(task.title || task.name || '').trim(),
+      date: String(task.date || deadlineMatch?.[1] || '').trim(),
+      time: String(task.time || deadlineMatch?.[2] || '').trim().slice(0, 5),
+    };
+  }).filter((task) => task.title || task.date || task.time);
 }
 
 function deleteResearchAudioFiles(audioFilenames) {

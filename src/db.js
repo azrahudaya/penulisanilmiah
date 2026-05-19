@@ -145,9 +145,13 @@ export function insertTask({ chatId, title, deadlineMs }) {
   return getTask(info.lastInsertRowid);
 }
 
-export function listTasks(chatId, { includeDone = false } = {}) {
+export function listTasks(chatId, { includeDone = false, includeOverdue = false } = {}) {
   if (includeDone) {
     return db.prepare('SELECT * FROM tasks WHERE chat_id = ? ORDER BY deadline_ms').all(chatId);
+  }
+  if (!includeOverdue) {
+    return db.prepare("SELECT * FROM tasks WHERE chat_id = ? AND status = 'pending' AND deadline_ms > ? ORDER BY deadline_ms")
+      .all(chatId, Date.now());
   }
   return db.prepare("SELECT * FROM tasks WHERE chat_id = ? AND status = 'pending' ORDER BY deadline_ms").all(chatId);
 }

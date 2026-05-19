@@ -73,8 +73,8 @@
           <% tasks.forEach((task) => { %>
             <div class="task-row">
               <input name="task_title" placeholder="Judul" value="<%= task.title || '' %>" required>
-              <input name="task_date" placeholder="YYYY-MM-DD" value="<%= task.date || '' %>" required>
-              <input name="task_time" placeholder="HH:mm" value="<%= task.time || '' %>" required>
+              <input type="date" name="task_date" value="<%= task.date || '' %>" required>
+              <input type="time" name="task_time" value="<%= task.time || '' %>" required>
               <button type="button" class="ghost" data-remove-task>Hapus</button>
             </div>
           <% }) %>

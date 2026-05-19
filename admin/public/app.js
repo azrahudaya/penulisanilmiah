@@ -2,15 +2,7 @@ document.addEventListener('click', (event) => {
   const addButton = event.target.closest('[data-add-task]');
   if (addButton) {
     const list = document.querySelector('[data-task-list]');
-    const row = document.createElement('div');
-    row.className = 'task-row';
-    row.innerHTML = `
-      <input name="task_title" placeholder="Judul" required>
-      <input name="task_date" placeholder="YYYY-MM-DD" required>
-      <input name="task_time" placeholder="HH:mm" required>
-      <button type="button" class="ghost" data-remove-task>Hapus</button>
-    `;
-    list.appendChild(row);
+    if (list) list.appendChild(createTaskRow());
   }
 
   const removeButton = event.target.closest('[data-remove-task]');
@@ -45,20 +37,12 @@ async function handleAiSuggest(button) {
     const gtTextarea = document.querySelector('[name="transcript_ground_truth"]');
     if (gtTextarea) gtTextarea.value = data.transcriptGroundTruth || '';
 
-    if (Array.isArray(data.tasks) && data.tasks.length) {
+    const tasks = Array.isArray(data.tasks) ? data.tasks.map(normalizeTask).filter((task) => task.title || task.date || task.time) : [];
+    if (tasks.length) {
       const list = document.querySelector('[data-task-list]');
-      list.innerHTML = '';
-      data.tasks.forEach((task) => {
-        const row = document.createElement('div');
-        row.className = 'task-row';
-        row.innerHTML = `
-          <input name="task_title" placeholder="Judul" value="${escHtml(task.title || '')}" required>
-          <input name="task_date" placeholder="YYYY-MM-DD" value="${escHtml(task.date || '')}" required>
-          <input name="task_time" placeholder="HH:mm" value="${escHtml(task.time || '')}" required>
-          <button type="button" class="ghost" data-remove-task>Hapus</button>
-        `;
-        list.appendChild(row);
-      });
+      if (list) {
+        list.replaceChildren(...tasks.map((task) => createTaskRow(task)));
+      }
     }
   } catch (err) {
     alert('Auto-fill AI gagal: ' + err.message);
@@ -68,6 +52,44 @@ async function handleAiSuggest(button) {
   }
 }
 
-function escHtml(str) {
-  return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function createTaskRow(task = {}) {
+  const row = document.createElement('div');
+  row.className = 'task-row';
+
+  const title = document.createElement('input');
+  title.name = 'task_title';
+  title.placeholder = 'Judul';
+  title.required = true;
+  title.value = task.title || '';
+
+  const date = document.createElement('input');
+  date.type = 'date';
+  date.name = 'task_date';
+  date.required = true;
+  date.value = task.date || '';
+
+  const time = document.createElement('input');
+  time.type = 'time';
+  time.name = 'task_time';
+  time.required = true;
+  time.value = task.time || '';
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'ghost';
+  remove.dataset.removeTask = '';
+  remove.textContent = 'Hapus';
+
+  row.append(title, date, time, remove);
+  return row;
+}
+
+function normalizeTask(task) {
+  const deadline = String(task.deadline_iso || task.deadline || '');
+  const deadlineMatch = deadline.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})/);
+  return {
+    title: String(task.title || task.name || '').trim(),
+    date: String(task.date || deadlineMatch?.[1] || '').trim(),
+    time: String(task.time || deadlineMatch?.[2] || '').trim().slice(0, 5),
+  };
 }
