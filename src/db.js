@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   deadline_ms INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
+  missed_notified_at INTEGER DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -108,6 +109,7 @@ function ensureColumn(table, column, definition) {
 ensureColumn('research_logs', 'processing_time_total_ms', "INTEGER DEFAULT 0");
 ensureColumn('research_logs', 'confirmation_status', "TEXT DEFAULT 'pending_confirmation'");
 ensureColumn('research_logs', 'consent_status', "TEXT DEFAULT 'unconfirmed'");
+ensureColumn('tasks', 'missed_notified_at', "INTEGER DEFAULT 0");
 ensureColumn('research_respondents', 'consent_status', "TEXT DEFAULT 'unconfirmed'");
 ensureColumn('research_respondents', 'name', "TEXT DEFAULT ''");
 ensureColumn('research_respondents', 'age', "INTEGER DEFAULT 0");
@@ -173,13 +175,31 @@ export function deleteTask(id, chatId) {
 
 export function rescheduleTask(id, chatId, newDeadlineMs) {
   const now = Date.now();
-  const info = db.prepare('UPDATE tasks SET deadline_ms = ?, updated_at = ? WHERE id = ? AND chat_id = ?')
+  const info = db.prepare('UPDATE tasks SET deadline_ms = ?, missed_notified_at = 0, updated_at = ? WHERE id = ? AND chat_id = ?')
     .run(newDeadlineMs, now, id, chatId);
   return info.changes > 0;
 }
 
 export function listPendingForScheduling(afterMs = Date.now()) {
   return db.prepare("SELECT * FROM tasks WHERE status = 'pending' AND deadline_ms > ?").all(afterMs);
+}
+
+export function listUnnotifiedOverdueTasks(now = Date.now()) {
+  return db.prepare(`
+    SELECT *
+    FROM tasks
+    WHERE status = 'pending'
+      AND deadline_ms <= ?
+      AND COALESCE(missed_notified_at, 0) = 0
+    ORDER BY chat_id, deadline_ms
+  `).all(now);
+}
+
+export function markMissedNotified(taskIds, notifiedAt = Date.now()) {
+  if (!taskIds.length) return 0;
+  const stmt = db.prepare('UPDATE tasks SET missed_notified_at = ?, updated_at = ? WHERE id = ?');
+  const tx = db.transaction((ids) => ids.reduce((count, id) => count + stmt.run(notifiedAt, notifiedAt, id).changes, 0));
+  return tx(taskIds);
 }
 
 export function upsertPendingConfirmation({
@@ -295,7 +315,7 @@ export function startRespondentRegistration(chatId) {
         chat_id, respondent_id, consent_status, registration_step,
         created_at, updated_at
       ) VALUES (
-        @chatId, @respondentId, 'unconfirmed', 'name',
+        @chatId, @respondentId, 'unconfirmed', 'consent',
         @now, @now
       )
       ON CONFLICT(chat_id) DO UPDATE SET
@@ -304,7 +324,7 @@ export function startRespondentRegistration(chatId) {
         gender = '',
         occupation = '',
         consent_status = 'unconfirmed',
-        registration_step = 'name',
+        registration_step = 'consent',
         gender_poll_message_id = '',
         reminder_poll_message_id = '',
         consent_poll_message_id = '',

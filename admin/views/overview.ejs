@@ -16,6 +16,13 @@
   <div><span>Avg F1</span><strong><%= fmt.metric(stats.avg_f1) %></strong></div>
 </section>
 
+<section class="metrics ops-metrics">
+  <div><span>Reminder Aktif</span><strong><%= ops.activeTasks || 0 %></strong></div>
+  <div><span>Reminder Terlewat</span><strong><%= ops.overdueTasks || 0 %></strong></div>
+  <div><span>Menunggu User</span><strong><%= ops.pendingConfirmations || 0 %></strong></div>
+  <div><span>Registrasi Belum Selesai</span><strong><%= ops.incompleteRegistrations || 0 %></strong></div>
+</section>
+
 <section class="panel setting-panel">
   <div>
     <h2>Mode Saran</h2>
@@ -76,8 +83,8 @@
             <td><a href="/review?id=<%= log.id %>">#<%= log.id %></a></td>
             <td><%= log.respondent_id || '-' %></td>
             <td><%= log.name || '-' %></td>
-            <td><span class="badge"><%= log.status %></span></td>
-            <td><%= log.confirmation_status || '-' %></td>
+            <td><span class="badge"><%= fmt.status(log.status) %></span></td>
+            <td><%= fmt.confirmation(log.confirmation_status) %></td>
             <td><%= fmt.metric(log.wer_score) %></td>
             <td><%= fmt.metric(log.f1_score) %></td>
             <td><%= log.audioExists ? 'Ada' : '-' %></td>

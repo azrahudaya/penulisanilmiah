@@ -19,6 +19,8 @@ import {
   deleteTask,
   rescheduleTask,
   listPendingForScheduling,
+  listUnnotifiedOverdueTasks,
+  markMissedNotified,
   getTask,
   insertResearchLog,
   updateResearchLog,
@@ -76,6 +78,10 @@ const SMALL_TALK_INPUTS = new Set([
   'terima kasih',
 ]);
 
+function userError(text, code) {
+  return `${text}\nKode: ${code}`;
+}
+
 client.on('qr', (qr) => {
   qrcodeTerminal.generate(qr, { small: true });
   logger.info('Scan QR untuk login WhatsApp.');
@@ -91,7 +97,8 @@ client.on('ready', async () => {
   }
   const pending = listPendingForScheduling();
   pending.forEach((task) => scheduleReminders(task, client));
-  logger.info('Reminder pending dimuat.', { count: pending.length });
+  const missed = await notifyMissedReminders();
+  logger.info('Reminder pending dimuat.', { count: pending.length, missed });
 });
 
 client.on('message', async (message) => {
@@ -116,7 +123,7 @@ client.on('message', async (message) => {
     }
   } catch (err) {
     logger.error('Message handler error', { message: err.message, stack: err.stack });
-    await message.reply('Terjadi kesalahan. Coba lagi sebentar.');
+    await message.reply(userError('Ada gangguan. Coba lagi sebentar.', 'BOT-01'));
   }
 });
 
@@ -132,17 +139,17 @@ function mapVoiceErrorToReply(err) {
   if (!err) return null;
   switch (err.code) {
     case 'insufficient_quota':
-      return 'Transkripsi sedang tidak tersedia. Coba lagi nanti.';
+      return userError('VN belum bisa diproses. Coba lagi nanti.', 'VN-04');
     case 'rate_limited':
-      return 'Lagi banyak proses. Coba lagi sebentar.';
+      return userError('Lagi ramai. Coba lagi sebentar.', 'VN-05');
     case 'openai_key_missing':
-      return 'Transkripsi belum aktif. Hubungi admin.';
+      return userError('VN belum bisa diproses. Hubungi admin.', 'VN-06');
     case 'whisper_model_missing':
-      return 'Transkripsi belum aktif. Hubungi admin.';
+      return userError('VN belum bisa diproses. Hubungi admin.', 'VN-07');
     case 'whisper_binary_not_found':
-      return 'Transkripsi belum aktif. Hubungi admin.';
+      return userError('VN belum bisa diproses. Hubungi admin.', 'VN-08');
     case 'transcriber_not_configured':
-      return 'Transkripsi belum aktif. Hubungi admin.';
+      return userError('VN belum bisa diproses. Hubungi admin.', 'VN-09');
     default:
       return null;
   }
@@ -154,25 +161,25 @@ async function handleVoiceMessage(message) {
   logger.info('Voice note diterima.', { chatId });
   const existingPending = getActivePendingConfirmation(chatId);
   if (existingPending) {
-    await message.reply("Masih ada reminder yang belum dikonfirmasi. Pilih dulu ya.");
+    await repeatPendingConfirmation(message, chatId, existingPending);
     return;
   }
 
   const durationBeforeDownload = getAudioDurationMs(message);
   if (durationBeforeDownload > config.maxVoiceNoteDurationMs) {
-    await message.reply('VN terlalu panjang. Maksimal 5 menit ya.');
+    await message.reply(userError('VN terlalu panjang. Maksimal 5 menit.', 'VN-01'));
     logger.warn('Voice note ditolak karena durasi.', { chatId, durationMs: durationBeforeDownload });
     return;
   }
 
   const media = await message.downloadMedia();
   if (!media) {
-    await message.reply('Tidak bisa mengunduh voice note.');
+    await message.reply(userError('VN belum bisa diproses. Coba kirim ulang.', 'VN-02'));
     return;
   }
   const approxBytes = Buffer.byteLength(media.data || '', 'base64');
   if (approxBytes > config.maxVoiceNoteBytes) {
-    await message.reply('VN terlalu besar. Coba kirim yang lebih pendek ya.');
+    await message.reply(userError('VN terlalu besar. Coba kirim yang lebih pendek.', 'VN-03'));
     logger.warn('Voice note ditolak karena ukuran.', { chatId, approxBytes });
     return;
   }
@@ -236,7 +243,7 @@ async function handleVoiceMessage(message) {
 
     if (!tasks.length) {
       writeResearchLog({ status: 'pending_review', confirmationStatus: 'no_tasks' });
-      await message.reply('Tidak menemukan tugas di VN tersebut. Coba lagi.');
+      await message.reply(userError('Saya belum menemukan reminder di VN itu. Coba kirim ulang.', 'VN-10'));
       return;
     }
 
@@ -283,16 +290,9 @@ async function handleTextCommand(message) {
 
   const pendingConfirmation = getActivePendingConfirmation(chatId);
   if (pendingConfirmation) {
-    if (lower === 'ya') {
-      await completePendingConfirmation(chatId, 'accepted', (text) => message.reply(text));
-      return;
-    }
-    if (lower === 'edit') {
-      await completePendingConfirmation(chatId, 'edited', (text) => message.reply(text));
-      return;
-    }
-    if (lower === 'batal') {
-      await completePendingConfirmation(chatId, 'cancelled', (text) => message.reply(text));
+    const confirmationAction = parseConfirmationAction(lower);
+    if (confirmationAction) {
+      await completePendingConfirmation(chatId, confirmationAction, (text) => message.reply(text));
       return;
     }
   }
@@ -368,8 +368,13 @@ async function sendConfirmationPrompt(message, chatId, summary, pendingConfirmat
     pendingConfirmation.confirmationChannel = 'text_fallback';
     pendingConfirmations.set(chatId, pendingConfirmation);
     upsertPendingConfirmation(pendingConfirmation);
-    await message.reply(`Aku dengar:\n${summary}\n\nBalas: ya / edit / batal`);
+    await message.reply(`Aku dengar:\n${summary}\n\nBalas: simpan / edit / batal`);
   }
+}
+
+async function repeatPendingConfirmation(message, chatId, pendingConfirmation) {
+  const summary = formatTasksForConfirmation(pendingConfirmation.tasks);
+  await sendConfirmationPrompt(message, chatId, summary, pendingConfirmation);
 }
 
 function buildConfirmationPollTitle(summary) {
@@ -400,14 +405,42 @@ function formatTaskLine(task) {
   return `${task.title} - ${timeStr}`;
 }
 
-function formatSavedReminderMessage(chatId) {
-  const tasks = listTasks(chatId);
+function formatTaskRow(task, { showId = false } = {}) {
+  const deadline = dayjs(task.deadline_ms).tz(config.timezone).format('DD MMM YYYY HH:mm');
+  const prefix = showId ? `#${task.id} ` : '';
+  const suffix = task.deadline_ms <= Date.now() ? ' (terlewat)' : '';
+  return `- ${prefix}${task.title} - ${deadline}${suffix}`;
+}
+
+function formatSavedReminderMessage(tasks) {
   if (!tasks.length) return 'Tersimpan.';
-  const lines = tasks.map((task) => {
-    const deadline = dayjs(task.deadline_ms).tz(config.timezone).format('DD MMM YYYY HH:mm');
-    return `- ${task.title} - ${deadline}`;
-  }).join('\n');
-  return `Tersimpan.\n\n${lines}`;
+  const lines = tasks.map((task) => formatTaskRow(task)).join('\n');
+  return `Tersimpan:\n${lines}\n\nKetik list untuk lihat semua reminder aktif.`;
+}
+
+async function notifyMissedReminders() {
+  const overdue = listUnnotifiedOverdueTasks();
+  if (!overdue.length) return 0;
+
+  const byChat = new Map();
+  overdue.forEach((task) => {
+    const items = byChat.get(task.chat_id) || [];
+    items.push(task);
+    byChat.set(task.chat_id, items);
+  });
+
+  let notified = 0;
+  for (const [chatId, tasks] of byChat) {
+    const visible = tasks.slice(0, 5).map((task) => formatTaskRow(task, { showId: true })).join('\n');
+    const more = tasks.length > 5 ? `\n+${tasks.length - 5} reminder lain. Ketik list.` : '';
+    try {
+      await client.sendMessage(chatId, `Ada reminder terlewat saat bot offline:\n${visible}${more}\n\nKetik done <id>, delete <id>, atau reschedule <id> <jadwal>.`);
+      notified += markMissedNotified(tasks.map((task) => task.id));
+    } catch (err) {
+      logger.error('Gagal mengirim reminder terlewat.', { chatId, message: err.message });
+    }
+  }
+  return notified;
 }
 
 async function handlePollVote(vote) {
@@ -453,21 +486,13 @@ async function handleRegistrationGate(message) {
 
   if (!respondent || lower === 'register') {
     respondent = startRespondentRegistration(chatId);
-    await message.reply(`Halo! Selamat datang di Reminder Bot.
-
-Sebelum mulai, saya perlu data singkat untuk penelitian.
-
-Siapa nama kamu?`);
+    await sendConsentPoll(chatId, message);
     return true;
   }
 
   if (respondent.registration_step === 'not_started') {
-    startRespondentRegistration(chatId);
-    await message.reply(`Halo! Selamat datang di Reminder Bot.
-
-Sebelum mulai, saya perlu data singkat untuk penelitian.
-
-Siapa nama kamu?`);
+    respondent = startRespondentRegistration(chatId);
+    await sendConsentPoll(chatId, message);
     return true;
   }
 
@@ -503,7 +528,17 @@ Siapa nama kamu?`);
 async function handleRegistrationTextStep(message, respondent, body) {
   const chatId = message.from;
   const lower = body.toLowerCase();
-  const step = respondent.registration_step || 'name';
+  const step = respondent.registration_step || 'consent';
+
+  if (step === 'consent') {
+    const consent = parseConsentChoice(lower);
+    if (!consent) {
+      await message.reply('Pilih dari polling, atau ketik setuju / tidak.');
+      return;
+    }
+    await completeRegistrationConsent(chatId, consent, (text) => message.reply(text));
+    return;
+  }
 
   if (step === 'name') {
     const name = body.replace(/\s+/g, ' ').trim();
@@ -512,19 +547,17 @@ async function handleRegistrationTextStep(message, respondent, body) {
       return;
     }
     const firstName = name.split(/\s+/)[0];
-    updateRespondent(chatId, { name, registrationStep: 'age' });
-    await message.reply(`Terima kasih, ${firstName}. Berapa usia kamu?`);
+    updateRespondent(chatId, { name, registrationStep: 'gender' });
+    await message.reply(`Makasih, ${firstName}.`);
+    await sendGenderPoll(chatId, message);
     return;
   }
 
   if (step === 'age') {
-    const age = Number(body);
-    if (!Number.isInteger(age) || age < 10 || age > 100) {
-      await message.reply('Usia ditulis angka saja ya. Contoh: 21');
-      return;
-    }
-    updateRespondent(chatId, { age, registrationStep: 'gender' });
-    await sendGenderPoll(chatId, message);
+    updateRespondent(chatId, { registrationStep: respondent.consent_status === 'consented' ? 'gender' : 'consent' });
+    await message.reply('Kita lanjut yang wajib dulu ya.');
+    if (respondent.consent_status === 'consented') await sendGenderPoll(chatId, message);
+    else await sendConsentPoll(chatId, message);
     return;
   }
 
@@ -534,34 +567,17 @@ async function handleRegistrationTextStep(message, respondent, body) {
       await message.reply('Pilih gender dari polling, atau ketik 1 / 2.');
       return;
     }
-    updateRespondent(chatId, { gender, registrationStep: 'occupation', genderPollMessageId: '' });
-    await message.reply('Apa pekerjaan atau kesibukan kamu saat ini?');
+    updateRespondent(chatId, { gender, genderPollMessageId: '' });
+    await completeRegistrationProfile(chatId, (text) => message.reply(text));
     return;
   }
 
   if (step === 'occupation') {
-    const occupation = body.replace(/\s+/g, ' ').trim();
-    if (occupation.length < 2 || occupation.length > 120) {
-      await message.reply('Tulis pekerjaan/kesibukan 2-120 karakter ya.');
-      return;
-    }
-    updateRespondent(chatId, {
-      occupation,
-      reminderOffsets: JSON.stringify(DEFAULT_REMINDER_OFFSET_KEYS),
-      registrationStep: 'consent',
-      reminderPollMessageId: '',
-    });
-    await sendConsentPoll(chatId, message);
+    updateRespondent(chatId, { registrationStep: respondent.consent_status === 'consented' ? 'gender' : 'consent' });
+    await message.reply('Kita lanjut yang wajib dulu ya.');
+    if (respondent.consent_status === 'consented') await sendGenderPoll(chatId, message);
+    else await sendConsentPoll(chatId, message);
     return;
-  }
-
-  if (step === 'consent') {
-    const consent = parseConsentChoice(lower);
-    if (!consent) {
-      await message.reply('Pilih dari polling, atau ketik 1 / 2.');
-      return;
-    }
-    await completeRegistrationConsent(chatId, consent, (text) => message.reply(text));
   }
 }
 
@@ -581,13 +597,13 @@ async function sendGenderPoll(chatId, message) {
 }
 
 async function sendConsentPoll(chatId, message) {
-  const text = `Data kamu dipakai untuk penelitian ilmiah dan dijaga kerahasiaannya.
+  const text = `Bot menyimpan VN, transkrip, dan reminder untuk penelitian. Data bisa dihapus lewat deletedata.
 
-Apakah kamu setuju?`;
+Setuju?`;
   try {
     const pollMessage = await client.sendMessage(
       chatId,
-      new Poll(text, ['Ya, saya setuju', 'Tidak'], { allowMultipleAnswers: false })
+      new Poll(text, ['Setuju', 'Tidak'], { allowMultipleAnswers: false })
     );
     const pollMessageId = pollMessage?.id?._serialized || '';
     if (pollMessageId) {
@@ -616,13 +632,13 @@ async function handleRegistrationPollVote(vote, pollMessageId, selected) {
   if (respondent.registration_step === 'gender') {
     const gender = selected.includes('laki') ? 'Laki-laki' : selected.includes('perempuan') ? 'Perempuan' : '';
     if (!gender) return true;
-    updateRespondent(respondent.chat_id, { gender, registrationStep: 'occupation', genderPollMessageId: '' });
-    await client.sendMessage(respondent.chat_id, 'Apa pekerjaan atau kesibukan kamu saat ini?');
+    updateRespondent(respondent.chat_id, { gender, genderPollMessageId: '' });
+    await completeRegistrationProfile(respondent.chat_id, (text) => client.sendMessage(respondent.chat_id, text));
     return true;
   }
 
   if (respondent.registration_step === 'consent') {
-    const consent = selected.includes('setuju') ? 'consented' : selected.includes('tidak') ? 'declined' : '';
+    const consent = selected.includes('tidak') ? 'declined' : selected.includes('setuju') ? 'consented' : '';
     if (!consent) return true;
     await completeRegistrationConsent(respondent.chat_id, consent, (text) => client.sendMessage(respondent.chat_id, text));
     return true;
@@ -632,34 +648,36 @@ async function handleRegistrationPollVote(vote, pollMessageId, selected) {
 }
 
 async function completeRegistrationConsent(chatId, consentStatus, reply) {
-  const respondent = getRespondent(chatId);
   if (consentStatus === 'declined') {
     updateRespondent(chatId, {
       consentStatus: 'declined',
       registrationStep: 'declined',
       consentPollMessageId: '',
     });
-    await reply("Baik, registrasi dihentikan. Ketik 'register' kalau ingin daftar ulang.");
+    await reply("Oke. Bot belum bisa dipakai. Ketik register untuk daftar lagi.");
     return;
   }
 
+  updateRespondent(chatId, {
+    consentStatus: 'consented',
+    registrationStep: 'name',
+    consentPollMessageId: '',
+  });
+  await reply('Makasih. Nama kamu siapa?');
+}
+
+async function completeRegistrationProfile(chatId, reply) {
+  const respondent = getRespondent(chatId);
   const firstName = (respondent?.name || '').split(/\s+/)[0] || 'kamu';
   const selectedReminderOffsets = parseReminderOffsets(respondent?.reminder_offsets);
   updateRespondent(chatId, {
-    consentStatus: 'consented',
     registrationStep: 'completed',
     reminderOffsets: JSON.stringify(selectedReminderOffsets.length ? selectedReminderOffsets : DEFAULT_REMINDER_OFFSET_KEYS),
-    consentPollMessageId: '',
     registeredAt: Date.now(),
   });
-  await reply(`Registrasi berhasil.
+  await reply(`Selesai. Halo ${firstName}.
 
-Halo ${firstName}, kamu bisa mulai pakai Reminder Bot.
-
-Kirim VN, contoh:
-"ingatkan aku besok jam 9 meeting"
-
-Ketik help untuk panduan.`);
+Kirim VN atau teks reminder.`);
 }
 
 function parseGenderChoice(value) {
@@ -669,8 +687,15 @@ function parseGenderChoice(value) {
 }
 
 function parseConsentChoice(value) {
-  if (value === '1' || value.includes('setuju') || value === 'ya') return 'consented';
   if (value === '2' || value.includes('tidak')) return 'declined';
+  if (value === '1' || value.includes('setuju') || value === 'ya') return 'consented';
+  return '';
+}
+
+function parseConfirmationAction(value) {
+  if (['1', 'ya', 'iya', 'yes', 'y', 'ok', 'oke', 'simpan'].includes(value)) return 'accepted';
+  if (['2', 'edit', 'ubah', 'revisi'].includes(value)) return 'edited';
+  if (['3', 'batal', 'cancel', 'hapus'].includes(value)) return 'cancelled';
   return '';
 }
 
@@ -708,7 +733,7 @@ async function completePendingConfirmation(chatId, action, reply) {
       return insertTask({ chatId, title: t.title, deadlineMs });
     });
     saved.forEach((task) => scheduleReminders(task, client));
-    await reply(formatSavedReminderMessage(chatId));
+    await reply(formatSavedReminderMessage(saved));
     await maybeAskForFeedback(chatId);
     return;
   }
@@ -879,13 +904,13 @@ async function handleNaturalTextTask(message, text) {
   const chatId = message.from;
   const existingPending = getActivePendingConfirmation(chatId);
   if (existingPending) {
-    await message.reply("Masih ada reminder yang belum dikonfirmasi. Pilih dulu ya.");
+    await repeatPendingConfirmation(message, chatId, existingPending);
     return;
   }
 
   const tasks = await extractTasks(text, { source: 'text' });
   if (!tasks.length) {
-    await message.reply('Saya belum nangkep detail task-nya. Coba kirim ulang dengan konteks waktu, misalnya "besok jam 09.00 follow up vendor".');
+    await message.reply(userError('Saya belum menemukan reminder. Contoh: "besok jam 09.00 follow up vendor".', 'TXT-01'));
     return;
   }
 
@@ -901,28 +926,35 @@ async function handleNaturalTextTask(message, text) {
   pendingConfirmations.set(chatId, pendingConfirmation);
   upsertPendingConfirmation(pendingConfirmation);
   const summary = formatTasksForConfirmation(tasks);
-  await message.reply(`Aku tangkap:\n${summary}\n\nBalas: ya / edit / batal`);
+  await sendConfirmationPrompt(message, chatId, summary, pendingConfirmation);
 }
 
 async function sendHelp(message) {
   const serverNow = dayjs().tz(config.timezone).format('DD MMM YYYY HH:mm:ss');
-  const adminLine = isAdminMessage(message) ? '\n- researchstats: ringkasan data penelitian admin' : '';
-  const helpText = `Command:
-- help/menu: lihat panduan
-- profile/data: lihat data registrasi
-- editdata: ubah data registrasi
-- deletedata: hapus data akun dan riwayat penelitian
-- time/now: cek waktu server
+  const adminLine = isAdminMessage(message) ? '\nAdmin:\n- researchstats: ringkasan data penelitian' : '';
+  const helpText = `Cara pakai Reminder Bot
+
+Buat reminder:
+Kirim VN atau teks bebas.
+Contoh: "ingatkan aku besok jam 9 meeting"
+
+Setelah bot menebak reminder:
+Balas simpan, edit, atau batal.
+
+Kelola reminder:
 - list: lihat reminder aktif
-- done <id>: tandai reminder selesai
-- delete <id>: hapus reminder
-- reschedule <id> <YYYY-MM-DD HH:mm>: ubah jadwal${adminLine}
+- done <id>: tandai selesai
+- delete <id>: hapus
+- reschedule <id> <YYYY-MM-DD HH:mm>: ubah jadwal
 
-Waktu server sekarang: ${serverNow} (${config.timezone})
-Default reminder: H-10 menit dan saat deadline.
+Data kamu:
+- profile: lihat data registrasi
+- editdata: ubah data
+- deletedata: hapus akun dan riwayat
+- time: cek waktu server
 
-Kirim VN atau teks bebas untuk membuat reminder.
-Contoh: "ingatkan aku besok jam 9 meeting"`;
+Waktu server: ${serverNow} (${config.timezone})
+Reminder default: H-10 menit dan saat deadline.${adminLine}`;
   await message.reply(helpText);
 }
 
@@ -952,7 +984,13 @@ function formatReminderPreference(value) {
 }
 
 async function handleEditData(message) {
-  startRespondentRegistration(message.from);
+  updateRespondent(message.from, {
+    name: '',
+    gender: '',
+    registrationStep: 'name',
+    genderPollMessageId: '',
+    consentPollMessageId: '',
+  });
   await message.reply(`Oke, kita ubah data dari awal.
 
 Siapa nama kamu?`);
@@ -1002,15 +1040,12 @@ async function sendServerTime(message) {
 }
 
 async function sendList(message) {
-  const tasks = listTasks(message.from);
+  const tasks = listTasks(message.from, { includeOverdue: true });
   if (!tasks.length) {
     await message.reply('Tidak ada tugas pending.');
     return;
   }
-  const lines = tasks.map((t) => {
-    const deadline = dayjs(t.deadline_ms).tz(config.timezone).format('DD MMM YYYY HH:mm');
-    return `${t.id}. ${t.title} - ${deadline}`;
-  }).join('\n');
+  const lines = tasks.map((task) => formatTaskRow(task, { showId: true }).slice(2)).join('\n');
   await message.reply(lines);
 }
 

@@ -6,7 +6,7 @@
   <form class="inline" method="get" action="/review">
     <select name="status" onchange="this.form.submit()">
       <% ['pending_review','reviewed','excluded','all'].forEach((item) => { %>
-        <option value="<%= item %>" <%= status === item ? 'selected' : '' %>><%= item %></option>
+        <option value="<%= item %>" <%= status === item ? 'selected' : '' %>><%= item === 'all' ? 'Semua' : fmt.status(item) %></option>
       <% }) %>
     </select>
   </form>
@@ -21,7 +21,7 @@
     <% logs.forEach((log) => { %>
       <a class="log-item <%= selected && selected.id === log.id ? 'active' : '' %>" href="/review?status=<%= status %>&id=<%= log.id %>">
         <strong>#<%= log.id %> <%= log.name || log.respondent_id || '-' %></strong>
-        <span><%= log.status %> · <%= log.confirmation_status || '-' %></span>
+        <span><%= fmt.status(log.status) %> · <%= fmt.confirmation(log.confirmation_status) %></span>
       </a>
     <% }) %>
   </section>
@@ -33,7 +33,7 @@
       <div class="detail-title">
         <div>
           <h2>#<%= selected.id %> · <%= selected.name || selected.respondent_id || '-' %></h2>
-          <p><%= selected.createdText %> · <%= selected.status %></p>
+          <p><%= selected.createdText %> · <%= fmt.status(selected.status) %></p>
         </div>
         <div style="display:flex;gap:8px">
           <form method="post" action="/review/<%= selected.id %>/exclude" onsubmit="return confirm('Exclude data ini?')">

@@ -96,6 +96,7 @@ app.post('/logout', requireAuth, requireCsrf, (req, res) => {
 
 app.get('/', requireAuth, (req, res) => {
   const stats = getOverviewStats();
+  const ops = getOpsStats();
   const feedbackPromptEnabled = isFeedbackPromptEnabled();
   const logs = db.prepare(`
     SELECT l.*, r.name, r.age, r.gender, r.occupation
@@ -115,6 +116,7 @@ app.get('/', requireAuth, (req, res) => {
     title: 'Overview',
     page: 'overview',
     stats,
+    ops,
     logs,
     feedback,
     feedbackPromptEnabled,
@@ -496,6 +498,21 @@ function getOverviewStats() {
   `).get();
 }
 
+function getOpsStats() {
+  const now = Date.now();
+  return {
+    pendingConfirmations: db.prepare('SELECT COUNT(*) AS total FROM pending_confirmations').get().total || 0,
+    overdueTasks: db.prepare("SELECT COUNT(*) AS total FROM tasks WHERE status = 'pending' AND deadline_ms <= ?").get(now).total || 0,
+    activeTasks: db.prepare("SELECT COUNT(*) AS total FROM tasks WHERE status = 'pending' AND deadline_ms > ?").get(now).total || 0,
+    incompleteRegistrations: db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM research_respondents
+      WHERE registration_step != 'completed'
+        AND registration_step != 'declined'
+    `).get().total || 0,
+  };
+}
+
 function hydrateReviewLog(id) {
   const row = db.prepare(`
     SELECT l.*, r.name, r.respondent_id, r.age, r.gender, r.occupation
@@ -731,6 +748,24 @@ const fmt = {
   },
   date(value) {
     return value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '-';
+  },
+  status(value) {
+    return {
+      pending_review: 'Menunggu review',
+      reviewed: 'Sudah direview',
+      excluded: 'Dikeluarkan',
+    }[value] || value || '-';
+  },
+  confirmation(value) {
+    return {
+      pending_confirmation: 'Menunggu user',
+      accepted: 'Disimpan',
+      edited: 'Diedit user',
+      cancelled: 'Dibatalkan',
+      expired: 'Kedaluwarsa',
+      no_tasks: 'Tidak terbaca',
+      processing_error: 'Gagal proses',
+    }[value] || value || '-';
   },
   reminders(value) {
     const labels = {
