@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { tmpdir } from 'os';
 import { spawnSync } from 'child_process';
+import { pipeline } from 'stream/promises';
 import { fileURLToPath } from 'url';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
@@ -30,7 +31,7 @@ export async function restoreState() {
   }
   try {
     const response = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-    await response.Body.transformToFile(archive);
+    await pipeline(response.Body, fs.createWriteStream(archive));
     tar(['-xzf', archive]);
     fs.rmSync(archive, { force: true });
     console.log('State berhasil dipulihkan dari object storage.');
