@@ -41,7 +41,7 @@ export async function extractTasksWithRaw(inputText, { source = 'unknown' } = {}
   const provider = config.taskParserProvider;
   const shouldUseOpenAI = openai && (provider === 'openai' || provider === 'auto');
   if (!shouldUseOpenAI) {
-    const tasks = parseRuleBasedTasks(inputText);
+    const tasks = normalizeExtractedTasks(parseRuleBasedTasks(inputText), inputText);
     return { tasks, rawResponse: JSON.stringify({ provider: 'rule_based', tasks }) };
   }
 

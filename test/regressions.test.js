@@ -5,15 +5,22 @@ import path from 'node:path';
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reminderbot-test-'));
 process.env.DB_PATH = path.join(tempDir, 'tasks.db');
+process.env.TASK_PARSER_PROVIDER = 'rule_based';
 
 const { findPollOptionName } = await import('../src/poll.js');
 const { prepareTasksForInsert } = await import('../src/tasks.js');
 const dbModule = await import('../src/db.js');
+const { extractTasks } = await import('../src/nlp.js');
 const db = dbModule.default;
 
 assert.equal(findPollOptionName({ name: 'Simpan' }), 'simpan');
 assert.equal(findPollOptionName({ localId: 2 }, [{ localId: 2, name: 'Setuju' }]), 'setuju');
 assert.throws(() => prepareTasksForInsert('chat', [{ title: 'rusak', deadline_iso: 'bukan tanggal' }]), /deadline/);
+
+const beforeRelative = Date.now();
+const [relativeTask] = await extractTasks('meeting dalam 30 menit lagi', { source: 'test' });
+const relativeDelay = Date.parse(relativeTask.deadline_iso) - beforeRelative;
+assert.ok(relativeDelay >= 29 * 60_000 && relativeDelay <= 31 * 60_000, `relative delay: ${relativeDelay}`);
 
 const valid = prepareTasksForInsert('chat', [{ title: 'Tes', deadline_iso: '2030-01-01T10:00:00+07:00' }]);
 assert.equal(dbModule.insertTasks(valid).length, 1);
