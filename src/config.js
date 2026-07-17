@@ -7,7 +7,7 @@ const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(moduleDir, '..');
 const envPath = path.join(projectRoot, '.env');
 
-dotenv.config({ path: envPath, quiet: true, override: true });
+dotenv.config({ path: envPath, quiet: true });
 
 function resolveFromProjectIfRelative(value) {
   if (!value) return '';

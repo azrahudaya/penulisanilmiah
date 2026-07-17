@@ -10,10 +10,10 @@ const { Client, LocalAuth, Poll } = wweb;
 
 import { config, requireEnv } from './config.js';
 import { writeTempFile, convertToWav, saveResearchWav, transcribeWhisper, cleanupResearchAudioFiles } from './audio.js';
-import { extractTasks, extractTasksWithRaw, deadlineMsFromIso } from './nlp.js';
+import { extractTasks, extractTasksWithRaw } from './nlp.js';
 import { logger } from './logger.js';
 import {
-  insertTask,
+  insertTasks,
   listTasks,
   markDone,
   deleteTask,
@@ -40,6 +40,8 @@ import {
   insertResearchFeedback,
 } from './db.js';
 import { scheduleReminders, cancelReminders, rescheduleTaskReminders, REMINDER_OFFSET_OPTIONS, DEFAULT_REMINDER_OFFSET_KEYS } from './scheduler.js';
+import { findPollOptionName } from './poll.js';
+import { prepareTasksForInsert } from './tasks.js';
 
 requireEnv();
 dayjs.extend(utc);
@@ -449,8 +451,12 @@ async function handlePollVote(vote) {
   const pollMessageId = vote.parentMessage?.id?._serialized || vote.parentMsgKey?._serialized || '';
   if (!pollMessageId) return;
 
-  const selected = vote.selectedOptions[0]?.name?.toLowerCase() || '';
-  if (await handleRegistrationPollVote(vote, pollMessageId, selected)) {
+  let pollMessage = vote.parentMessage;
+  if (!pollMessage?.pollOptions?.length) {
+    pollMessage = await client.getMessageById(pollMessageId).catch(() => null);
+  }
+  const selected = findPollOptionName(vote.selectedOptions[0], pollMessage?.pollOptions);
+  if (await handleRegistrationPollVote(pollMessageId, selected)) {
     return;
   }
 
@@ -462,11 +468,6 @@ async function handlePollVote(vote) {
     await client.sendMessage(pending.chatId, 'Konfirmasi sudah kedaluwarsa. Kirim ulang ya.');
     return;
   }
-  if (!isVoteFromPendingChat(vote, pending.chatId)) {
-    logger.warn('Mengabaikan poll vote dari voter tidak sesuai.', { voter: vote.voter, chatId: pending.chatId });
-    return;
-  }
-
   let action = null;
   if (selected.includes('simpan')) action = 'accepted';
   if (selected.includes('edit')) action = 'edited';
@@ -614,10 +615,9 @@ Setuju?`;
   }
 }
 
-async function handleRegistrationPollVote(vote, pollMessageId, selected) {
+async function handleRegistrationPollVote(pollMessageId, selected) {
   const respondent = getRespondentByRegistrationPollMessageId(pollMessageId);
   if (!respondent) return false;
-  if (!isVoteFromPendingChat(vote, respondent.chat_id)) return true;
   if (isRegistrationPollExpired(respondent)) {
     updateRespondent(respondent.chat_id, {
       registrationStep: 'not_started',
@@ -721,22 +721,21 @@ async function completePendingConfirmation(chatId, action, reply) {
   }
 
   const { tasks, researchLogId } = pendingConfirmation;
-  pendingConfirmations.delete(chatId);
-  deletePendingConfirmation(chatId);
-  if (researchLogId) {
-    updateResearchLog(researchLogId, { confirmationStatus: action });
-  }
 
   if (action === 'accepted') {
-    const saved = tasks.map((t) => {
-      const deadlineMs = deadlineMsFromIso(t.deadline_iso);
-      return insertTask({ chatId, title: t.title, deadlineMs });
-    });
+    const saved = insertTasks(prepareTasksForInsert(chatId, tasks));
+    pendingConfirmations.delete(chatId);
+    deletePendingConfirmation(chatId);
+    if (researchLogId) updateResearchLog(researchLogId, { confirmationStatus: action });
     saved.forEach((task) => scheduleReminders(task, client));
     await reply(formatSavedReminderMessage(saved));
     await maybeAskForFeedback(chatId);
     return;
   }
+
+  pendingConfirmations.delete(chatId);
+  deletePendingConfirmation(chatId);
+  if (researchLogId) updateResearchLog(researchLogId, { confirmationStatus: action });
 
   if (action === 'edited') {
     await reply('Oke, kirim ulang VN atau teksnya.');
@@ -859,20 +858,18 @@ function expirePendingConfirmation(chatId, pendingConfirmation) {
   }
 }
 
-function isVoteFromPendingChat(vote, chatId) {
-  const voter = normalizePhone(vote?.voter);
-  const chat = normalizePhone(chatId);
-  if (!voter || !chat) return false;
-  return chat.includes(voter) || voter.includes(chat);
-}
-
 function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
-function isAdminMessage(message) {
+async function isAdminMessage(message) {
   if (!config.adminPhone) return false;
-  return normalizePhone(message.from) === normalizePhone(config.adminPhone);
+  const identifiers = [message.from];
+  if (String(message.from || '').endsWith('@lid')) {
+    const [mapped] = await client.getContactLidAndPhone([message.from]).catch(() => []);
+    if (mapped?.pn) identifiers.push(mapped.pn);
+  }
+  return identifiers.some((value) => normalizePhone(value) === normalizePhone(config.adminPhone));
 }
 
 function isGroupChatId(chatId) {
@@ -931,7 +928,7 @@ async function handleNaturalTextTask(message, text) {
 
 async function sendHelp(message) {
   const serverNow = dayjs().tz(config.timezone).format('DD MMM YYYY HH:mm:ss');
-  const adminLine = isAdminMessage(message) ? '\nAdmin:\n- researchstats: ringkasan data penelitian' : '';
+  const adminLine = await isAdminMessage(message) ? '\nAdmin:\n- researchstats: ringkasan data penelitian' : '';
   const helpText = `Cara pakai Reminder Bot
 
 Buat reminder:
@@ -1018,7 +1015,7 @@ deletedata confirm`);
 }
 
 async function handleResearchStats(message) {
-  if (!isAdminMessage(message)) {
+  if (!(await isAdminMessage(message))) {
     await message.reply('Perintah ini hanya untuk admin.');
     return;
   }
@@ -1070,9 +1067,9 @@ async function handleDelete(message, args) {
     await message.reply('Gunakan: delete <id>');
     return;
   }
-  cancelReminders(id);
   const ok = deleteTask(id, message.from);
   if (ok) {
+    cancelReminders(id);
     await message.reply(`Tugas ${id} dihapus.`);
   } else {
     await message.reply('ID tidak ditemukan.');

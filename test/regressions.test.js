@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reminderbot-test-'));
+process.env.DB_PATH = path.join(tempDir, 'tasks.db');
+
+const { findPollOptionName } = await import('../src/poll.js');
+const { prepareTasksForInsert } = await import('../src/tasks.js');
+const dbModule = await import('../src/db.js');
+const db = dbModule.default;
+
+assert.equal(findPollOptionName({ name: 'Simpan' }), 'simpan');
+assert.equal(findPollOptionName({ localId: 2 }, [{ localId: 2, name: 'Setuju' }]), 'setuju');
+assert.throws(() => prepareTasksForInsert('chat', [{ title: 'rusak', deadline_iso: 'bukan tanggal' }]), /deadline/);
+
+const valid = prepareTasksForInsert('chat', [{ title: 'Tes', deadline_iso: '2030-01-01T10:00:00+07:00' }]);
+assert.equal(dbModule.insertTasks(valid).length, 1);
+const before = db.prepare('SELECT COUNT(*) total FROM tasks').get().total;
+assert.throws(() => dbModule.insertTasks([
+  { chatId: 'chat', title: 'A', deadlineMs: Date.now() },
+  { chatId: 'chat', title: 'B', deadlineMs: null },
+]));
+assert.equal(db.prepare('SELECT COUNT(*) total FROM tasks').get().total, before);
+
+const log = dbModule.insertResearchLog({ chatId: 'chat' });
+dbModule.upsertPendingConfirmation({ chatId: 'chat', tasks: valid, researchLogId: log.id });
+db.prepare('UPDATE pending_confirmations SET created_at = 1 WHERE chat_id = ?').run('chat');
+assert.equal(dbModule.deleteExpiredPendingConfirmations(1000, Date.now()), 1);
+assert.equal(dbModule.getResearchLog(log.id).confirmation_status, 'expired');
+
+db.close();
+fs.rmSync(tempDir, { recursive: true, force: true });
+console.log('regression checks passed');

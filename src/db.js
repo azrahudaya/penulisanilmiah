@@ -133,18 +133,16 @@ db.prepare(`
   ON CONFLICT(key) DO NOTHING
 `).run(Date.now());
 
-db.prepare(`
-  UPDATE research_respondents
-  SET reminder_offsets = '["m10","due"]'
-  WHERE reminder_offsets IS NULL OR reminder_offsets != '["m10","due"]'
-`).run();
-
 export function insertTask({ chatId, title, deadlineMs }) {
   const now = Date.now();
   const stmt = db.prepare(`INSERT INTO tasks (chat_id, title, deadline_ms, status, created_at, updated_at)
     VALUES (@chatId, @title, @deadlineMs, 'pending', @now, @now)`);
   const info = stmt.run({ chatId, title, deadlineMs, now });
   return getTask(info.lastInsertRowid);
+}
+
+export function insertTasks(tasks) {
+  return db.transaction((items) => items.map((task) => insertTask(task)))(tasks);
 }
 
 export function listTasks(chatId, { includeDone = false, includeOverdue = false } = {}) {
@@ -268,7 +266,12 @@ export function deletePendingConfirmation(chatId) {
 }
 
 export function deleteExpiredPendingConfirmations(maxAgeMs, now = Date.now()) {
-  return db.prepare('DELETE FROM pending_confirmations WHERE created_at < ?').run(now - maxAgeMs).changes;
+  return db.transaction((cutoff) => {
+    const expired = db.prepare('SELECT research_log_id FROM pending_confirmations WHERE created_at < ?').all(cutoff);
+    const markExpired = db.prepare("UPDATE research_logs SET confirmation_status = 'expired' WHERE id = ? AND confirmation_status = 'pending_confirmation'");
+    for (const row of expired) if (row.research_log_id) markExpired.run(row.research_log_id);
+    return db.prepare('DELETE FROM pending_confirmations WHERE created_at < ?').run(cutoff).changes;
+  })(now - maxAgeMs);
 }
 
 function stringifyJsonField(value, fallback = '[]') {

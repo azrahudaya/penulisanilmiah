@@ -24,6 +24,7 @@ const envPath = path.join(rootDir, '.env');
 const env = { ...loadEnv(envPath), ...process.env };
 const assetVersion = getAssetVersion();
 const app = express();
+app.set('trust proxy', 'loopback');
 const port = Number(env.ADMIN_PORT || 3000);
 const password = env.DASHBOARD_PASSWORD || '';
 const sessionSecret = env.ADMIN_SESSION_SECRET || crypto.createHash('sha256').update(password || 'dev').digest('hex');
