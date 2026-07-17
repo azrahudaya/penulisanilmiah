@@ -5,17 +5,13 @@ import utc from 'dayjs/plugin/utc.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import customParseFormat from 'dayjs/plugin/customParseFormat.js';
 import qrcodeTerminal from 'qrcode-terminal';
-import QRCode from 'qrcode';
 import wweb from 'whatsapp-web.js';
-const { Client, LocalAuth, RemoteAuth, Poll } = wweb;
+const { Client, LocalAuth, Poll } = wweb;
 
 import { config, requireEnv } from './config.js';
 import { writeTempFile, convertToWav, saveResearchWav, transcribeWhisper, cleanupResearchAudioFiles } from './audio.js';
 import { extractTasks, extractTasksWithRaw, deadlineMsFromIso } from './nlp.js';
 import { logger } from './logger.js';
-import { setWhatsappRuntime } from './runtime.js';
-import { createS3AuthStore } from './s3-auth-store.js';
-import { findPollOptionName } from './poll.js';
 import {
   insertTask,
   listTasks,
@@ -50,11 +46,8 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(customParseFormat);
 
-const authStore = createS3AuthStore();
 const client = new Client({
-  authStrategy: authStore
-    ? new RemoteAuth({ store: authStore, clientId: 'bot', backupSyncIntervalMs: 60_000 })
-    : new LocalAuth(),
+  authStrategy: new LocalAuth(),
   puppeteer: {
     headless: true,
     ...(config.chromeExecutablePath ? { executablePath: config.chromeExecutablePath } : {}),
@@ -89,14 +82,12 @@ function userError(text, code) {
   return `${text}\nKode: ${code}`;
 }
 
-client.on('qr', async (qr) => {
+client.on('qr', (qr) => {
   qrcodeTerminal.generate(qr, { small: true });
-  setWhatsappRuntime({ status: 'qr_required', qrDataUrl: await QRCode.toDataURL(qr, { margin: 2, width: 320 }) });
   logger.info('Scan QR untuk login WhatsApp.');
 });
 
 client.on('ready', async () => {
-  setWhatsappRuntime({ status: 'ready', qrDataUrl: '' });
   logger.info('Bot siap. Memuat jadwal reminder...');
   const expired = deleteExpiredPendingConfirmations(PENDING_CONFIRMATION_TTL_MS);
   if (expired) logger.info('Menghapus pending confirmation expired.', { expired });
@@ -109,11 +100,6 @@ client.on('ready', async () => {
   const missed = await notifyMissedReminders();
   logger.info('Reminder pending dimuat.', { count: pending.length, missed });
 });
-
-client.on('authenticated', () => setWhatsappRuntime({ status: 'authenticated', qrDataUrl: '' }));
-client.on('remote_session_saved', () => logger.info('Sesi WhatsApp tersimpan di object storage.'));
-client.on('auth_failure', (message) => setWhatsappRuntime({ status: `auth_failure: ${message}`, qrDataUrl: '' }));
-client.on('disconnected', (reason) => setWhatsappRuntime({ status: `disconnected: ${reason}`, qrDataUrl: '' }));
 
 client.on('message', async (message) => {
   try {
@@ -463,12 +449,7 @@ async function handlePollVote(vote) {
   const pollMessageId = vote.parentMessage?.id?._serialized || vote.parentMsgKey?._serialized || '';
   if (!pollMessageId) return;
 
-  let pollMessage = vote.parentMessage;
-  if (!pollMessage?.pollOptions?.length) {
-    pollMessage = await client.getMessageById(pollMessageId).catch(() => null);
-  }
-  const selected = findPollOptionName(vote.selectedOptions[0], pollMessage?.pollOptions);
-  logger.info('Poll vote diterima.', { pollMessageId, selected: selected || 'unknown' });
+  const selected = vote.selectedOptions[0]?.name?.toLowerCase() || '';
   if (await handleRegistrationPollVote(vote, pollMessageId, selected)) {
     return;
   }
@@ -481,6 +462,11 @@ async function handlePollVote(vote) {
     await client.sendMessage(pending.chatId, 'Konfirmasi sudah kedaluwarsa. Kirim ulang ya.');
     return;
   }
+  if (!isVoteFromPendingChat(vote, pending.chatId)) {
+    logger.warn('Mengabaikan poll vote dari voter tidak sesuai.', { voter: vote.voter, chatId: pending.chatId });
+    return;
+  }
+
   let action = null;
   if (selected.includes('simpan')) action = 'accepted';
   if (selected.includes('edit')) action = 'edited';
@@ -631,6 +617,7 @@ Setuju?`;
 async function handleRegistrationPollVote(vote, pollMessageId, selected) {
   const respondent = getRespondentByRegistrationPollMessageId(pollMessageId);
   if (!respondent) return false;
+  if (!isVoteFromPendingChat(vote, respondent.chat_id)) return true;
   if (isRegistrationPollExpired(respondent)) {
     updateRespondent(respondent.chat_id, {
       registrationStep: 'not_started',
@@ -870,6 +857,13 @@ function expirePendingConfirmation(chatId, pendingConfirmation) {
   if (pendingConfirmation?.researchLogId) {
     updateResearchLog(pendingConfirmation.researchLogId, { confirmationStatus: 'expired' });
   }
+}
+
+function isVoteFromPendingChat(vote, chatId) {
+  const voter = normalizePhone(vote?.voter);
+  const chat = normalizePhone(chatId);
+  if (!voter || !chat) return false;
+  return chat.includes(voter) || voter.includes(chat);
 }
 
 function normalizePhone(value) {

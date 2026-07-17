@@ -15,7 +15,6 @@ import db, {
   setAppSetting,
 } from '../src/db.js';
 import { calculateExtractionMetrics, calculateWer, parseJsonList, validateGroundTruthTasks } from './metrics.js';
-import { whatsappRuntime } from '../src/runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -25,7 +24,7 @@ const envPath = path.join(rootDir, '.env');
 const env = { ...loadEnv(envPath), ...process.env };
 const assetVersion = getAssetVersion();
 const app = express();
-const port = Number(process.env.PORT || env.ADMIN_PORT || 3000);
+const port = Number(env.ADMIN_PORT || 3000);
 const password = env.DASHBOARD_PASSWORD || '';
 const sessionSecret = env.ADMIN_SESSION_SECRET || crypto.createHash('sha256').update(password || 'dev').digest('hex');
 const loginAttempts = new Map();
@@ -124,10 +123,6 @@ app.get('/', requireAuth, (req, res) => {
     fmt,
     success: req.query.success || '',
   });
-});
-
-app.get('/whatsapp', requireAuth, (req, res) => {
-  res.page('whatsapp', { title: 'WhatsApp', page: 'whatsapp', runtime: whatsappRuntime });
 });
 
 app.post('/settings/feedback-prompt', requireAuth, requireCsrf, (req, res) => {
