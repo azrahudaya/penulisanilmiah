@@ -1,0 +1,13 @@
+<section class="page-header">
+  <div><h1>WhatsApp</h1><p>Status koneksi bot dan QR login.</p></div>
+</section>
+<section class="card">
+  <h2>Status: <%= runtime.status %></h2>
+  <p>Terakhir berubah: <%= new Date(runtime.updatedAt).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) %></p>
+  <% if (runtime.qrDataUrl) { %>
+    <p>Scan QR berikut menggunakan WhatsApp pada ponsel bot.</p>
+    <img src="<%= runtime.qrDataUrl %>" alt="QR login WhatsApp" width="320" height="320">
+  <% } else if (runtime.status !== 'ready') { %>
+    <p>QR belum tersedia. Muat ulang halaman dalam beberapa detik.</p>
+  <% } %>
+</section>

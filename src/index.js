@@ -5,6 +5,7 @@ import utc from 'dayjs/plugin/utc.js';
 import timezone from 'dayjs/plugin/timezone.js';
 import customParseFormat from 'dayjs/plugin/customParseFormat.js';
 import qrcodeTerminal from 'qrcode-terminal';
+import QRCode from 'qrcode';
 import wweb from 'whatsapp-web.js';
 const { Client, LocalAuth, Poll } = wweb;
 
@@ -12,6 +13,7 @@ import { config, requireEnv } from './config.js';
 import { writeTempFile, convertToWav, saveResearchWav, transcribeWhisper, cleanupResearchAudioFiles } from './audio.js';
 import { extractTasks, extractTasksWithRaw, deadlineMsFromIso } from './nlp.js';
 import { logger } from './logger.js';
+import { setWhatsappRuntime } from './runtime.js';
 import {
   insertTask,
   listTasks,
@@ -82,12 +84,14 @@ function userError(text, code) {
   return `${text}\nKode: ${code}`;
 }
 
-client.on('qr', (qr) => {
+client.on('qr', async (qr) => {
   qrcodeTerminal.generate(qr, { small: true });
+  setWhatsappRuntime({ status: 'qr_required', qrDataUrl: await QRCode.toDataURL(qr, { margin: 2, width: 320 }) });
   logger.info('Scan QR untuk login WhatsApp.');
 });
 
 client.on('ready', async () => {
+  setWhatsappRuntime({ status: 'ready', qrDataUrl: '' });
   logger.info('Bot siap. Memuat jadwal reminder...');
   const expired = deleteExpiredPendingConfirmations(PENDING_CONFIRMATION_TTL_MS);
   if (expired) logger.info('Menghapus pending confirmation expired.', { expired });
@@ -100,6 +104,10 @@ client.on('ready', async () => {
   const missed = await notifyMissedReminders();
   logger.info('Reminder pending dimuat.', { count: pending.length, missed });
 });
+
+client.on('authenticated', () => setWhatsappRuntime({ status: 'authenticated', qrDataUrl: '' }));
+client.on('auth_failure', (message) => setWhatsappRuntime({ status: `auth_failure: ${message}`, qrDataUrl: '' }));
+client.on('disconnected', (reason) => setWhatsappRuntime({ status: `disconnected: ${reason}`, qrDataUrl: '' }));
 
 client.on('message', async (message) => {
   try {

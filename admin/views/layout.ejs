@@ -21,6 +21,7 @@
       <a class="<%= page === 'respondents' ? 'active' : '' %>" href="/respondents">Respondents</a>
       <a class="<%= page === 'export' ? 'active' : '' %>" href="/export">Export</a>
       <a class="<%= page === 'backup' ? 'active' : '' %>" href="/backup">Backup Data</a>
+      <a class="<%= page === 'whatsapp' ? 'active' : '' %>" href="/whatsapp">WhatsApp</a>
     </nav>
     <form method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
