@@ -62,6 +62,7 @@ const client = new Client({
 });
 
 const pendingConfirmations = new Map();
+const pendingPollTrackers = new Set();
 const PENDING_CONFIRMATION_TTL_MS = 30 * 60 * 1000;
 const REGISTRATION_POLL_TTL_MS = 30 * 60 * 1000;
 const FEEDBACK_REPLY_TTL_MS = 5 * 60 * 1000;
@@ -130,6 +131,15 @@ client.on('message', async (message) => {
   } catch (err) {
     logger.error('Message handler error', { message: err.message, stack: err.stack });
     await message.reply(userError('Ada gangguan. Coba lagi sebentar.', 'BOT-01'));
+  }
+});
+
+client.on('message_create', (message) => {
+  if (!message.fromMe || message.type !== 'poll_creation') return;
+  for (const tracker of pendingPollTrackers) {
+    if (message.to !== tracker.chatId || !findSentPollMessage([message], tracker.pollName)) continue;
+    tracker.resolve(message);
+    break;
   }
 });
 
@@ -618,20 +628,30 @@ Setuju?`;
 }
 
 async function sendTrackedPoll(chatId, poll) {
+  const trackedMessage = waitForSentPoll(chatId, poll.pollName);
   let pollMessage = await client.sendMessage(chatId, poll);
-  if (!pollMessage) {
-    const chat = await client.getChatById(chatId);
-    for (let attempt = 0; attempt < 3 && !pollMessage; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      pollMessage = findSentPollMessage(
-        await chat.fetchMessages({ limit: 1, fromMe: true }),
-        poll.pollName
-      );
-    }
-  }
+  pollMessage ||= await trackedMessage;
   if (!pollMessage?.id?._serialized) throw new Error('Pesan polling tidak dapat dilacak.');
+  logger.info('Pesan polling berhasil dilacak.', { chatId, pollMessageId: pollMessage.id._serialized });
   monitorPollVotes(pollMessage);
   return pollMessage;
+}
+
+function waitForSentPoll(chatId, pollName) {
+  return new Promise((resolve) => {
+    const tracker = {
+      chatId,
+      pollName,
+      resolve: (message) => {
+        clearTimeout(timeout);
+        pendingPollTrackers.delete(tracker);
+        resolve(message);
+      },
+    };
+    const timeout = setTimeout(() => tracker.resolve(null), 5000);
+    timeout.unref();
+    pendingPollTrackers.add(tracker);
+  });
 }
 
 function monitorPollVotes(pollMessage) {
