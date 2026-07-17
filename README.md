@@ -1,113 +1,53 @@
-# Penulisan Ilmiah Reminder Bot
+# WhatsApp Voice Note Reminder Bot
 
-WhatsApp reminder bot for voice-note based task extraction. Users send a voice note or text, confirm the detected reminder through a WhatsApp poll, and receive reminders automatically.
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![WhatsApp](https://img.shields.io/badge/WhatsApp-Web.js-25D366?style=flat-square&logo=whatsapp&logoColor=white)](https://wwebjs.dev/)
+[![Express](https://img.shields.io/badge/Express-5-000000?style=flat-square&logo=express&logoColor=white)](https://expressjs.com/)
+[![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-Whisper-412991?style=flat-square&logo=openai&logoColor=white)](https://platform.openai.com/docs/guides/speech-to-text)
+[![PM2](https://img.shields.io/badge/PM2-Production-2B037A?style=flat-square&logo=pm2&logoColor=white)](https://pm2.keymetrics.io/)
 
-Try the bot:
+Bot WhatsApp untuk membuat pengingat dari voice note atau teks. Bot mengekstrak judul dan tenggat, meminta konfirmasi lewat polling, lalu mengirim pengingat 10 menit sebelum dan saat deadline.
 
-```text
-https://bot.azrahudaya.me
-```
+## Fitur
 
-Repository:
+- Transkripsi voice note dan parsing pengingat.
+- Konfirmasi **Simpan / Edit / Batal** melalui polling WhatsApp.
+- Penjadwalan dan pemulihan reminder setelah server restart.
+- Dashboard admin untuk audio, transkrip, responden, ekspor, backup, dan status operasional.
+- SQLite sebagai penyimpanan lokal tanpa layanan database tambahan.
 
-```text
-https://github.com/azrahudaya/penulisanilmiah
-```
+## Menjalankan Lokal
 
-## Features
-
-- Short onboarding: consent, name, gender.
-- Reminder creation from WhatsApp voice notes or free text.
-- WhatsApp poll confirmation before saving a reminder.
-- Default reminders: 10 minutes before and at the deadline.
-- Missed reminder recovery after server restart.
-- Admin dashboard for research review, respondents, export, backup, and operations status.
-
-## Tech Stack
-
-- Node.js
-- whatsapp-web.js
-- SQLite
-- Express + EJS
-- OpenAI Whisper/GPT, with local/rule-based fallback options
-
-## Requirements
-
-- Node.js 18+
-- npm
-- A WhatsApp account for the bot
-- OpenAI API key, or a local Whisper setup
-
-## Quick Start
+Persyaratan: Node.js 18+, npm, FFmpeg, Chrome/Chromium, dan akun WhatsApp.
 
 ```bash
 git clone https://github.com/azrahudaya/penulisanilmiah.git
 cd penulisanilmiah
 npm install
 cp .env.example .env
-```
-
-Edit `.env`:
-
-```env
-OPENAI_API_KEY=your_openai_key
-TIMEZONE=Asia/Jakarta
-DB_PATH=./data/tasks.db
-RESEARCH_MODE=true
-ADMIN_PHONE=628xxxxxxxxxx
-DASHBOARD_PASSWORD=change-this
-ADMIN_SESSION_SECRET=change-this-random-32-char-secret
-TRANSCRIPTION_PROVIDER=openai
-TASK_PARSER_PROVIDER=auto
-OPENAI_WHISPER_MODEL=whisper-1
-```
-
-Run the WhatsApp bot:
-
-```bash
 npm start
 ```
 
-Run the admin dashboard:
+Isi konfigurasi minimum di `.env`:
+
+```env
+OPENAI_API_KEY=
+TIMEZONE=Asia/Jakarta
+ADMIN_PHONE=628xxxxxxxxxx
+DASHBOARD_PASSWORD=ganti-password-ini
+ADMIN_SESSION_SECRET=ganti-dengan-string-acak-minimal-32-karakter
+```
+
+Scan QR WhatsApp yang muncul di terminal. Jalankan dashboard secara terpisah:
 
 ```bash
 npm run admin
 ```
 
-Local dashboard:
+Dashboard lokal tersedia di `http://127.0.0.1:3000`.
 
-```text
-http://localhost:3000
-```
-
-On first run, scan the WhatsApp QR code shown in the terminal.
-
-## VPS Deploy
-
-Install basic tools:
-
-```bash
-sudo apt update
-sudo apt install -y git curl nginx chromium
-sudo npm install -g pm2
-```
-
-Use system Chromium:
-
-```env
-CHROME_EXECUTABLE_PATH=/usr/bin/chromium
-ADMIN_COOKIE_SECURE=true
-```
-
-Run with PM2:
-
-```bash
-pm2 start src/index.js --name reminderbot
-pm2 start admin/server.js --name reminderbot-admin
-pm2 save
-```
-
-## User Commands
+## Perintah Bot
 
 ```text
 help
@@ -120,45 +60,14 @@ editdata
 deletedata confirm
 ```
 
-## Research Data
+## Deployment VPS
 
-When research mode is enabled, the app stores:
+Production menggunakan PM2 untuk menjaga proses bot dan dashboard tetap aktif, serta Nginx sebagai reverse proxy. Contoh konfigurasi tersedia di [`deploy/reminderbot.nginx`](deploy/reminderbot.nginx).
 
-- respondent profile
-- voice note audio
-- transcription
-- extracted reminder
-- review metrics
-
-Users can delete their data from WhatsApp with:
-
-```text
-deletedata confirm
+```bash
+pm2 start src/index.js --name reminderbot
+pm2 start admin/server.js --name reminderbot-admin
+pm2 save
 ```
 
-## GitHub Banner
-
-Recommended repository social preview image:
-
-```text
-1280 x 640 px
-PNG/JPG/GIF
-Under 1 MB
-```
-
-Keep the main text centered with enough margin. Suggested copy:
-
-```text
-Penulisan Ilmiah
-WhatsApp Voice Note Reminder Bot
-```
-
-Upload it from GitHub repository Settings -> Social preview.
-
-## Roadmap
-
-- WhatsApp session status in the admin dashboard.
-- Daily automatic backup for SQLite and audio files.
-- Anonymous CSV export without names or WhatsApp numbers.
-- Review queue that jumps to the next pending item after save.
-- Error-code summary in the admin dashboard.
+Jangan commit `.env`, sesi WhatsApp, database, audio pengguna, atau file backup. Semuanya sudah tercakup dalam `.gitignore`.

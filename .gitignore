@@ -1,5 +1,6 @@
 .env
 .env.local
+.env.*.local
 node_modules/
 
 # WhatsApp Web session credentials
@@ -14,6 +15,12 @@ data/*.db-shm
 data/*.db-wal
 data/audio/
 
+# Local notes and backups
+prompt.txt
+reminderbot-backup/
+*.bak
+*.backup
+
 # Python/Streamlit local artifacts
 __pycache__/
 *.py[cod]
@@ -21,6 +28,7 @@ __pycache__/
 
 # Logs and OS files
 *.log
+npm-debug.log*
 .DS_Store
 Thumbs.db
 
