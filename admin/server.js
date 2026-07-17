@@ -26,6 +26,7 @@ const assetVersion = getAssetVersion();
 const app = express();
 app.set('trust proxy', 'loopback');
 const port = Number(env.ADMIN_PORT || 3000);
+const host = env.ADMIN_HOST || '127.0.0.1';
 const password = env.DASHBOARD_PASSWORD || '';
 const sessionSecret = env.ADMIN_SESSION_SECRET || crypto.createHash('sha256').update(password || 'dev').digest('hex');
 const loginAttempts = new Map();
@@ -358,8 +359,8 @@ app.post('/backup/download', requireAuth, requireCsrf, async (req, res, next) =>
   }
 });
 
-app.listen(port, () => {
-  console.log(`Admin dashboard: http://localhost:${port}`);
+app.listen(port, host, () => {
+  console.log(`Admin dashboard: http://${host}:${port}`);
 });
 
 function loadEnv(file) {
