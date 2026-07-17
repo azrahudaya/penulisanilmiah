@@ -15,6 +15,7 @@ import { extractTasks, extractTasksWithRaw, deadlineMsFromIso } from './nlp.js';
 import { logger } from './logger.js';
 import { setWhatsappRuntime } from './runtime.js';
 import { createS3AuthStore } from './s3-auth-store.js';
+import { findPollOptionName } from './poll.js';
 import {
   insertTask,
   listTasks,
@@ -462,7 +463,12 @@ async function handlePollVote(vote) {
   const pollMessageId = vote.parentMessage?.id?._serialized || vote.parentMsgKey?._serialized || '';
   if (!pollMessageId) return;
 
-  const selected = vote.selectedOptions[0]?.name?.toLowerCase() || '';
+  let pollMessage = vote.parentMessage;
+  if (!pollMessage?.pollOptions?.length) {
+    pollMessage = await client.getMessageById(pollMessageId).catch(() => null);
+  }
+  const selected = findPollOptionName(vote.selectedOptions[0], pollMessage?.pollOptions);
+  logger.info('Poll vote diterima.', { pollMessageId, selected: selected || 'unknown' });
   if (await handleRegistrationPollVote(vote, pollMessageId, selected)) {
     return;
   }
@@ -475,11 +481,6 @@ async function handlePollVote(vote) {
     await client.sendMessage(pending.chatId, 'Konfirmasi sudah kedaluwarsa. Kirim ulang ya.');
     return;
   }
-  if (!isVoteFromPendingChat(vote, pending.chatId)) {
-    logger.warn('Mengabaikan poll vote dari voter tidak sesuai.', { voter: vote.voter, chatId: pending.chatId });
-    return;
-  }
-
   let action = null;
   if (selected.includes('simpan')) action = 'accepted';
   if (selected.includes('edit')) action = 'edited';
@@ -630,7 +631,6 @@ Setuju?`;
 async function handleRegistrationPollVote(vote, pollMessageId, selected) {
   const respondent = getRespondentByRegistrationPollMessageId(pollMessageId);
   if (!respondent) return false;
-  if (!isVoteFromPendingChat(vote, respondent.chat_id)) return true;
   if (isRegistrationPollExpired(respondent)) {
     updateRespondent(respondent.chat_id, {
       registrationStep: 'not_started',
@@ -870,13 +870,6 @@ function expirePendingConfirmation(chatId, pendingConfirmation) {
   if (pendingConfirmation?.researchLogId) {
     updateResearchLog(pendingConfirmation.researchLogId, { confirmationStatus: 'expired' });
   }
-}
-
-function isVoteFromPendingChat(vote, chatId) {
-  const voter = normalizePhone(vote?.voter);
-  const chat = normalizePhone(chatId);
-  if (!voter || !chat) return false;
-  return chat.includes(voter) || voter.includes(chat);
 }
 
 function normalizePhone(value) {
