@@ -40,7 +40,7 @@ import {
   insertResearchFeedback,
 } from './db.js';
 import { scheduleReminders, cancelReminders, rescheduleTaskReminders, REMINDER_OFFSET_OPTIONS, DEFAULT_REMINDER_OFFSET_KEYS } from './scheduler.js';
-import { findPollOptionName } from './poll.js';
+import { canMatchRegistrationVoteByChat, findPollOptionName } from './poll.js';
 import { prepareTasksForInsert } from './tasks.js';
 
 requireEnv();
@@ -456,7 +456,7 @@ async function handlePollVote(vote) {
     pollMessage = await client.getMessageById(pollMessageId).catch(() => null);
   }
   const selected = findPollOptionName(vote.selectedOptions[0], pollMessage?.pollOptions);
-  if (await handleRegistrationPollVote(pollMessageId, selected)) {
+  if (await handleRegistrationPollVote(pollMessageId, selected, pollMessage?.to)) {
     return;
   }
 
@@ -615,8 +615,15 @@ Setuju?`;
   }
 }
 
-async function handleRegistrationPollVote(pollMessageId, selected) {
-  const respondent = getRespondentByRegistrationPollMessageId(pollMessageId);
+async function handleRegistrationPollVote(pollMessageId, selected, pollChatId = '') {
+  let respondent = getRespondentByRegistrationPollMessageId(pollMessageId);
+  if (!respondent && pollChatId) {
+    const candidate = getRespondent(pollChatId);
+    if (canMatchRegistrationVoteByChat(candidate)) {
+      respondent = candidate;
+      logger.warn('Mencocokkan vote registrasi melalui chat karena ID polling tidak tersedia.', { chatId: pollChatId });
+    }
+  }
   if (!respondent) return false;
   if (isRegistrationPollExpired(respondent)) {
     updateRespondent(respondent.chat_id, {
@@ -630,7 +637,7 @@ async function handleRegistrationPollVote(pollMessageId, selected) {
   }
 
   if (respondent.registration_step === 'gender') {
-    const gender = selected.includes('laki') ? 'Laki-laki' : selected.includes('perempuan') ? 'Perempuan' : '';
+    const gender = selected?.includes('laki') ? 'Laki-laki' : selected?.includes('perempuan') ? 'Perempuan' : '';
     if (!gender) return true;
     updateRespondent(respondent.chat_id, { gender, genderPollMessageId: '' });
     await completeRegistrationProfile(respondent.chat_id, (text) => client.sendMessage(respondent.chat_id, text));
@@ -638,7 +645,7 @@ async function handleRegistrationPollVote(pollMessageId, selected) {
   }
 
   if (respondent.registration_step === 'consent') {
-    const consent = selected.includes('tidak') ? 'declined' : selected.includes('setuju') ? 'consented' : '';
+    const consent = selected?.includes('tidak') ? 'declined' : selected?.includes('setuju') ? 'consented' : '';
     if (!consent) return true;
     await completeRegistrationConsent(respondent.chat_id, consent, (text) => client.sendMessage(respondent.chat_id, text));
     return true;
