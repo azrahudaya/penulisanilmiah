@@ -7,19 +7,19 @@
 [![OpenAI](https://img.shields.io/badge/OpenAI-Whisper-412991?style=flat-square&logo=openai&logoColor=white)](https://platform.openai.com/docs/guides/speech-to-text)
 [![PM2](https://img.shields.io/badge/PM2-Production-2B037A?style=flat-square&logo=pm2&logoColor=white)](https://pm2.keymetrics.io/)
 
-Bot WhatsApp untuk membuat pengingat dari voice note atau teks. Bot mengekstrak judul dan tenggat, meminta konfirmasi lewat polling, lalu mengirim pengingat 10 menit sebelum dan saat deadline.
+A WhatsApp bot that creates reminders from voice notes or text. It extracts the title and deadline, asks for confirmation through a poll, then sends reminders 10 minutes before and at the deadline.
 
-## Fitur
+## Features
 
-- Transkripsi voice note dan parsing pengingat.
-- Konfirmasi **Simpan / Edit / Batal** melalui polling WhatsApp.
-- Penjadwalan dan pemulihan reminder setelah server restart.
-- Dashboard admin untuk audio, transkrip, responden, ekspor, backup, dan status operasional.
-- SQLite sebagai penyimpanan lokal tanpa layanan database tambahan.
+- Voice note transcription and reminder extraction.
+- **Save / Edit / Cancel** confirmation through WhatsApp polls.
+- Reminder scheduling and recovery after server restarts.
+- Admin dashboard for audio, transcripts, respondents, exports, backups, and operational status.
+- Local SQLite storage with no external database service.
 
-## Menjalankan Lokal
+## Run Locally
 
-Persyaratan: Node.js 18+, npm, FFmpeg, Chrome/Chromium, dan akun WhatsApp.
+Requirements: Node.js 18+, npm, FFmpeg, Chrome/Chromium, and a WhatsApp account.
 
 ```bash
 git clone https://github.com/azrahudaya/penulisanilmiah.git
@@ -29,25 +29,25 @@ cp .env.example .env
 npm start
 ```
 
-Isi konfigurasi minimum di `.env`:
+Add the minimum configuration to `.env`:
 
 ```env
 OPENAI_API_KEY=
 TIMEZONE=Asia/Jakarta
 ADMIN_PHONE=628xxxxxxxxxx
-DASHBOARD_PASSWORD=ganti-password-ini
-ADMIN_SESSION_SECRET=ganti-dengan-string-acak-minimal-32-karakter
+DASHBOARD_PASSWORD=change-this-password
+ADMIN_SESSION_SECRET=replace-with-a-random-string-at-least-32-characters-long
 ```
 
-Scan QR WhatsApp yang muncul di terminal. Jalankan dashboard secara terpisah:
+Scan the WhatsApp QR code shown in the terminal. Run the dashboard separately:
 
 ```bash
 npm run admin
 ```
 
-Dashboard lokal tersedia di `http://127.0.0.1:3000`.
+The local dashboard is available at `http://127.0.0.1:3000`.
 
-## Perintah Bot
+## Bot Commands
 
 ```text
 help
@@ -60,9 +60,9 @@ editdata
 deletedata confirm
 ```
 
-## Deployment VPS
+## VPS Deployment
 
-Production menggunakan PM2 untuk menjaga proses bot dan dashboard tetap aktif, serta Nginx sebagai reverse proxy. Contoh konfigurasi tersedia di [`deploy/reminderbot.nginx`](deploy/reminderbot.nginx).
+Production uses PM2 to keep the bot and dashboard running, with Nginx as the reverse proxy. An example configuration is available at [`deploy/reminderbot.nginx`](deploy/reminderbot.nginx).
 
 ```bash
 pm2 start src/index.js --name reminderbot
@@ -70,4 +70,4 @@ pm2 start admin/server.js --name reminderbot-admin
 pm2 save
 ```
 
-Jangan commit `.env`, sesi WhatsApp, database, audio pengguna, atau file backup. Semuanya sudah tercakup dalam `.gitignore`.
+Do not commit `.env`, WhatsApp sessions, databases, user audio, or backup files. They are already covered by `.gitignore`.
