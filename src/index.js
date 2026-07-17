@@ -50,6 +50,10 @@ dayjs.extend(customParseFormat);
 
 const client = new Client({
   authStrategy: new LocalAuth(),
+  ...(config.whatsappWebVersion ? {
+    webVersion: config.whatsappWebVersion,
+    webVersionCache: { type: 'local', strict: true },
+  } : {}),
   puppeteer: {
     headless: true,
     ...(config.chromeExecutablePath ? { executablePath: config.chromeExecutablePath } : {}),
@@ -131,6 +135,7 @@ client.on('message', async (message) => {
 
 client.on('vote_update', async (vote) => {
   try {
+    logger.info('Event vote polling diterima.');
     await handlePollVote(vote);
   } catch (err) {
     logger.error('Poll vote handler error', { message: err.message, stack: err.stack });
@@ -456,6 +461,7 @@ async function handlePollVote(vote) {
     pollMessage = await client.getMessageById(pollMessageId).catch(() => null);
   }
   const selected = findPollOptionName(vote.selectedOptions[0], pollMessage?.pollOptions);
+  logger.info('Vote polling diproses.', { pollMessageId, selected: selected || 'unknown' });
   if (await handleRegistrationPollVote(pollMessageId, selected, pollMessage?.to)) {
     return;
   }

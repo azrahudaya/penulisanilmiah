@@ -47,6 +47,7 @@ export const config = {
   taskParserProvider: (process.env.TASK_PARSER_PROVIDER || 'auto').toLowerCase(),
   openaiWhisperModel: process.env.OPENAI_WHISPER_MODEL || 'whisper-1',
   chromeExecutablePath: resolveExecutablePath(chromeExecutablePathRaw),
+  whatsappWebVersion: process.env.WHATSAPP_WEB_VERSION || '',
   whisperCppPath: resolveExecutablePath(whisperCppPathRaw),
   whisperModelPath: resolveFromProjectIfRelative(whisperModelPathRaw),
   whisperLanguage: process.env.WHISPER_LANGUAGE || 'id',
