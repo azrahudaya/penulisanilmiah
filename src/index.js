@@ -371,12 +371,7 @@ async function sendConfirmationPrompt(message, chatId, summary, pendingConfirmat
       upsertPendingConfirmation(pendingConfirmation);
     }
   } catch (err) {
-    logger.warn('Gagal mengirim poll konfirmasi, memakai fallback teks.', { chatId, message: err.message });
-    pendingConfirmation.pollMessageId = '';
-    pendingConfirmation.confirmationChannel = 'text_fallback';
-    pendingConfirmations.set(chatId, pendingConfirmation);
-    upsertPendingConfirmation(pendingConfirmation);
-    await message.reply(`Aku dengar:\n${summary}\n\nBalas: simpan / edit / batal`);
+    logger.error('Gagal melacak poll konfirmasi.', { chatId, message: err.message });
   }
 }
 
@@ -599,8 +594,8 @@ async function sendGenderPoll(chatId, message) {
     if (pollMessageId) {
       updateRespondent(chatId, { genderPollMessageId: pollMessageId });
     }
-  } catch {
-    await message.reply('Jenis kelamin kamu?\n1. Laki-laki\n2. Perempuan');
+  } catch (err) {
+    logger.error('Gagal melacak poll gender.', { chatId, message: err.message });
   }
 }
 
@@ -617,17 +612,22 @@ Setuju?`;
     if (pollMessageId) {
       updateRespondent(chatId, { consentPollMessageId: pollMessageId });
     }
-  } catch {
-    await message.reply(`${text}\n1. Ya, saya setuju\n2. Tidak`);
+  } catch (err) {
+    logger.error('Gagal melacak poll consent.', { chatId, message: err.message });
   }
 }
 
 async function sendTrackedPoll(chatId, poll) {
   let pollMessage = await client.sendMessage(chatId, poll);
   if (!pollMessage) {
-    await new Promise((resolve) => setTimeout(resolve, 500));
     const chat = await client.getChatById(chatId);
-    pollMessage = findSentPollMessage(await chat.fetchMessages({ limit: 10 }), poll.pollName);
+    for (let attempt = 0; attempt < 3 && !pollMessage; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      pollMessage = findSentPollMessage(
+        await chat.fetchMessages({ limit: 1, fromMe: true }),
+        poll.pollName
+      );
+    }
   }
   if (!pollMessage?.id?._serialized) throw new Error('Pesan polling tidak dapat dilacak.');
   monitorPollVotes(pollMessage);

@@ -12,6 +12,8 @@ export function canMatchRegistrationVoteByChat(respondent) {
 
 export function findSentPollMessage(messages, pollName) {
   return [...messages].reverse().find((message) => (
-    message?.fromMe && message.type === 'poll_creation' && message.body === pollName
+    message?.fromMe
+    && message.type === 'poll_creation'
+    && (message.pollName === pollName || message.body === pollName)
   ));
 }

@@ -20,7 +20,7 @@ assert.equal(canMatchRegistrationVoteByChat({ registration_step: 'consent', cons
 assert.equal(canMatchRegistrationVoteByChat({ registration_step: 'completed', consent_poll_message_id: '' }), false);
 assert.equal(findSentPollMessage([
   { fromMe: true, type: 'chat', body: 'Setuju?' },
-  { fromMe: true, type: 'poll_creation', body: 'Setuju?', id: 1 },
+  { fromMe: true, type: 'poll_creation', pollName: 'Setuju?', id: 1 },
 ], 'Setuju?').id, 1);
 assert.throws(() => prepareTasksForInsert('chat', [{ title: 'rusak', deadline_iso: 'bukan tanggal' }]), /deadline/);
 
