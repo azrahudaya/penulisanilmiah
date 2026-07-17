@@ -28,6 +28,7 @@ export function createS3AuthStore() {
       await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key(session), Body: fs.createReadStream(`${session}.zip`) }));
     },
     async extract({ session, path: target }) {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
       const response = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key(session) }));
       await pipeline(response.Body, fs.createWriteStream(target));
     },
