@@ -50,7 +50,7 @@ export async function uploadState() {
   if (!enabled || uploadRunning) return false;
   uploadRunning = true;
   try {
-    const items = ['data', '.wwebjs_auth'].filter((item) => fs.existsSync(path.join(root, item)));
+    const items = ['data'].filter((item) => fs.existsSync(path.join(root, item)));
     if (!items.length) return false;
     tar(['--warning=no-file-changed', '--ignore-failed-read', '-czf', archive, ...items]);
     await s3.send(new PutObjectCommand({

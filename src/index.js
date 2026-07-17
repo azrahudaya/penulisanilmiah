@@ -7,13 +7,14 @@ import customParseFormat from 'dayjs/plugin/customParseFormat.js';
 import qrcodeTerminal from 'qrcode-terminal';
 import QRCode from 'qrcode';
 import wweb from 'whatsapp-web.js';
-const { Client, LocalAuth, Poll } = wweb;
+const { Client, LocalAuth, RemoteAuth, Poll } = wweb;
 
 import { config, requireEnv } from './config.js';
 import { writeTempFile, convertToWav, saveResearchWav, transcribeWhisper, cleanupResearchAudioFiles } from './audio.js';
 import { extractTasks, extractTasksWithRaw, deadlineMsFromIso } from './nlp.js';
 import { logger } from './logger.js';
 import { setWhatsappRuntime } from './runtime.js';
+import { createS3AuthStore } from './s3-auth-store.js';
 import {
   insertTask,
   listTasks,
@@ -48,8 +49,11 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(customParseFormat);
 
+const authStore = createS3AuthStore();
 const client = new Client({
-  authStrategy: new LocalAuth(),
+  authStrategy: authStore
+    ? new RemoteAuth({ store: authStore, clientId: 'bot', backupSyncIntervalMs: 60_000 })
+    : new LocalAuth(),
   puppeteer: {
     headless: true,
     ...(config.chromeExecutablePath ? { executablePath: config.chromeExecutablePath } : {}),
@@ -106,6 +110,7 @@ client.on('ready', async () => {
 });
 
 client.on('authenticated', () => setWhatsappRuntime({ status: 'authenticated', qrDataUrl: '' }));
+client.on('remote_session_saved', () => logger.info('Sesi WhatsApp tersimpan di object storage.'));
 client.on('auth_failure', (message) => setWhatsappRuntime({ status: `auth_failure: ${message}`, qrDataUrl: '' }));
 client.on('disconnected', (reason) => setWhatsappRuntime({ status: `disconnected: ${reason}`, qrDataUrl: '' }));
 
