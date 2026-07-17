@@ -40,7 +40,7 @@ import {
   insertResearchFeedback,
 } from './db.js';
 import { scheduleReminders, cancelReminders, rescheduleTaskReminders, REMINDER_OFFSET_OPTIONS, DEFAULT_REMINDER_OFFSET_KEYS } from './scheduler.js';
-import { canMatchRegistrationVoteByChat, findPollOptionName } from './poll.js';
+import { canMatchRegistrationVoteByChat, findPollOptionName, findSentPollMessage } from './poll.js';
 import { prepareTasksForInsert } from './tasks.js';
 
 requireEnv();
@@ -358,10 +358,11 @@ async function handleTextCommand(message) {
 
 async function sendConfirmationPrompt(message, chatId, summary, pendingConfirmation) {
   try {
-    const pollMessage = await client.sendMessage(
-      chatId,
-      new Poll(buildConfirmationPollTitle(summary), ['Simpan', 'Edit', 'Batal'], { allowMultipleAnswers: false })
-    );
+    const pollMessage = await sendTrackedPoll(chatId, new Poll(
+      buildConfirmationPollTitle(summary),
+      ['Simpan', 'Edit', 'Batal'],
+      { allowMultipleAnswers: false }
+    ));
     const pollMessageId = pollMessage?.id?._serialized || '';
     if (pollMessageId) {
       pendingConfirmation.pollMessageId = pollMessageId;
@@ -590,7 +591,7 @@ async function handleRegistrationTextStep(message, respondent, body) {
 
 async function sendGenderPoll(chatId, message) {
   try {
-    const pollMessage = await client.sendMessage(
+    const pollMessage = await sendTrackedPoll(
       chatId,
       new Poll('Jenis kelamin kamu?', ['Laki-laki', 'Perempuan'], { allowMultipleAnswers: false })
     );
@@ -608,7 +609,7 @@ async function sendConsentPoll(chatId, message) {
 
 Setuju?`;
   try {
-    const pollMessage = await client.sendMessage(
+    const pollMessage = await sendTrackedPoll(
       chatId,
       new Poll(text, ['Setuju', 'Tidak'], { allowMultipleAnswers: false })
     );
@@ -619,6 +620,39 @@ Setuju?`;
   } catch {
     await message.reply(`${text}\n1. Ya, saya setuju\n2. Tidak`);
   }
+}
+
+async function sendTrackedPoll(chatId, poll) {
+  let pollMessage = await client.sendMessage(chatId, poll);
+  if (!pollMessage) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const chat = await client.getChatById(chatId);
+    pollMessage = findSentPollMessage(await chat.fetchMessages({ limit: 10 }), poll.pollName);
+  }
+  if (!pollMessage?.id?._serialized) throw new Error('Pesan polling tidak dapat dilacak.');
+  monitorPollVotes(pollMessage);
+  return pollMessage;
+}
+
+function monitorPollVotes(pollMessage) {
+  let checking = false;
+  const timer = setInterval(async () => {
+    if (checking) return;
+    checking = true;
+    try {
+      const votes = await pollMessage.getPollVotes();
+      const vote = votes.find((item) => item.selectedOptions?.length);
+      if (!vote) return;
+      clearInterval(timer);
+      await handlePollVote(vote);
+    } catch (err) {
+      logger.warn('Gagal memeriksa hasil polling.', { message: err.message });
+    } finally {
+      checking = false;
+    }
+  }, 2000);
+  timer.unref();
+  setTimeout(() => clearInterval(timer), PENDING_CONFIRMATION_TTL_MS).unref();
 }
 
 async function handleRegistrationPollVote(pollMessageId, selected, pollChatId = '') {

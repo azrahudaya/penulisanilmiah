@@ -7,7 +7,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reminderbot-test-'));
 process.env.DB_PATH = path.join(tempDir, 'tasks.db');
 process.env.TASK_PARSER_PROVIDER = 'rule_based';
 
-const { canMatchRegistrationVoteByChat, findPollOptionName } = await import('../src/poll.js');
+const { canMatchRegistrationVoteByChat, findPollOptionName, findSentPollMessage } = await import('../src/poll.js');
 const { prepareTasksForInsert } = await import('../src/tasks.js');
 const dbModule = await import('../src/db.js');
 const { extractTasks } = await import('../src/nlp.js');
@@ -18,6 +18,10 @@ assert.equal(findPollOptionName({ localId: 2 }, [{ localId: 2, name: 'Setuju' }]
 assert.equal(canMatchRegistrationVoteByChat({ registration_step: 'consent', consent_poll_message_id: '' }), true);
 assert.equal(canMatchRegistrationVoteByChat({ registration_step: 'consent', consent_poll_message_id: 'poll-id' }), false);
 assert.equal(canMatchRegistrationVoteByChat({ registration_step: 'completed', consent_poll_message_id: '' }), false);
+assert.equal(findSentPollMessage([
+  { fromMe: true, type: 'chat', body: 'Setuju?' },
+  { fromMe: true, type: 'poll_creation', body: 'Setuju?', id: 1 },
+], 'Setuju?').id, 1);
 assert.throws(() => prepareTasksForInsert('chat', [{ title: 'rusak', deadline_iso: 'bukan tanggal' }]), /deadline/);
 
 const beforeRelative = Date.now();

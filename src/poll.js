@@ -9,3 +9,9 @@ export function canMatchRegistrationVoteByChat(respondent) {
   if (respondent?.registration_step === 'gender') return !respondent.gender_poll_message_id;
   return false;
 }
+
+export function findSentPollMessage(messages, pollName) {
+  return [...messages].reverse().find((message) => (
+    message?.fromMe && message.type === 'poll_creation' && message.body === pollName
+  ));
+}
