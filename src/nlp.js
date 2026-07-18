@@ -73,6 +73,7 @@ export async function extractTasksWithRaw(inputText, { source = 'unknown' } = {}
     }
     return { tasks: normalizeExtractedTasks(parsed.tasks, inputText), rawResponse };
   } catch (err) {
+    if (provider === 'openai') throw err;
     if (err?.code === 'insufficient_quota' || err?.status === 429) {
       logger.warn('Extract tasks fallback karena OpenAI quota/rate-limit.');
     } else {

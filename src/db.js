@@ -256,9 +256,20 @@ export function getPendingConfirmation(chatId) {
 }
 
 export function getPendingConfirmationByPollMessageId(pollMessageId) {
-  const row = db.prepare('SELECT chat_id FROM pending_confirmations WHERE poll_message_id = ?').get(pollMessageId);
+  // Coba exact match (bare ID format baru), lalu LIKE suffix (full _serialized format lama)
+  let row = db.prepare('SELECT chat_id FROM pending_confirmations WHERE poll_message_id = ?').get(pollMessageId);
+  if (!row) {
+    row = db.prepare("SELECT chat_id FROM pending_confirmations WHERE poll_message_id LIKE '%_' || ?").get(pollMessageId);
+  }
   if (!row) return null;
   return getPendingConfirmation(row.chat_id);
+}
+
+export function listAllPendingConfirmations() {
+  return db.prepare('SELECT * FROM pending_confirmations').all().map((row) => ({
+    chatId: row.chat_id,
+    pollMessageId: row.poll_message_id || '',
+  }));
 }
 
 export function deletePendingConfirmation(chatId) {
@@ -374,11 +385,20 @@ export function updateRespondent(chatId, updates = {}) {
 }
 
 export function getRespondentByRegistrationPollMessageId(pollMessageId) {
-  return db.prepare(`
-    SELECT *
-    FROM research_respondents
-    WHERE gender_poll_message_id = ? OR reminder_poll_message_id = ? OR consent_poll_message_id = ?
-  `).get(pollMessageId, pollMessageId, pollMessageId);
+  // Coba exact match dulu, lalu LIKE suffix untuk format lama (full _serialized)
+  let row = db.prepare(`
+    SELECT * FROM research_respondents
+    WHERE gender_poll_message_id = ?1 OR reminder_poll_message_id = ?1 OR consent_poll_message_id = ?1
+  `).get(pollMessageId);
+  if (!row) {
+    row = db.prepare(`
+      SELECT * FROM research_respondents
+      WHERE gender_poll_message_id LIKE '%_' || ?1
+        OR reminder_poll_message_id LIKE '%_' || ?1
+        OR consent_poll_message_id LIKE '%_' || ?1
+    `).get(pollMessageId);
+  }
+  return row || null;
 }
 
 export function listRespondents() {

@@ -55,6 +55,24 @@ export function cancelReminders(taskId) {
   jobs.delete(taskId);
 }
 
+async function sendReminderWithRetry(client, chatId, text, taskId) {
+  const delays = [0, 10_000, 30_000];
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
+    try {
+      await client.sendMessage(chatId, text);
+      return;
+    } catch (err) {
+      const isLast = i === delays.length - 1;
+      if (isLast) {
+        logger.error('Failed to send reminder after retries', { taskId, message: err.message });
+      } else {
+        logger.warn('Reminder gagal, retry...', { taskId, attempt: i + 1, message: err.message });
+      }
+    }
+  }
+}
+
 export function scheduleReminders(task, client) {
   cancelReminders(task.id);
   const now = Date.now();
@@ -64,34 +82,24 @@ export function scheduleReminders(task, client) {
     const remindAt = task.deadline_ms - offset.ms;
     if (remindAt <= now) continue;
     const job = schedule.scheduleJob(new Date(remindAt), async () => {
-      try {
-        const currentTask = getTask(task.id);
-        if (!isTaskStillActive(currentTask)) {
-          logger.info('Reminder dilewati karena task sudah tidak aktif.', { taskId: task.id });
-          return;
-        }
-        const chat = await client.getChatById(currentTask.chat_id);
-        const prefix = offset.key === 'due' ? 'Pengingat' : `Pengingat ${offset.label}`;
-        await chat.sendMessage(`${prefix}: "${currentTask.title}" jatuh tempo ${formatDeadline(currentTask.deadline_ms)}.`);
-      } catch (err) {
-        logger.error('Failed to send reminder', { taskId: task.id, message: err.message });
+      const currentTask = getTask(task.id);
+      if (!isTaskStillActive(currentTask)) {
+        logger.info('Reminder dilewati karena task sudah tidak aktif.', { taskId: task.id });
+        return;
       }
+      const prefix = offset.key === 'due' ? 'Deadline' : offset.label;
+      await sendReminderWithRetry(client, currentTask.chat_id, `[${prefix}] "${currentTask.title}" — ${formatDeadline(currentTask.deadline_ms)}`, task.id);
     });
     taskJobs.push(job);
   }
   if (!taskJobs.length && task.deadline_ms > now) {
     const job = schedule.scheduleJob(new Date(task.deadline_ms), async () => {
-      try {
-        const currentTask = getTask(task.id);
-        if (!isTaskStillActive(currentTask)) {
-          logger.info('Reminder dilewati karena task sudah tidak aktif.', { taskId: task.id });
-          return;
-        }
-        const chat = await client.getChatById(currentTask.chat_id);
-        await chat.sendMessage(`Pengingat: "${currentTask.title}" jatuh tempo sekarang (${formatDeadline(currentTask.deadline_ms)}).`);
-      } catch (err) {
-        logger.error('Failed to send reminder', { taskId: task.id, message: err.message });
+      const currentTask = getTask(task.id);
+      if (!isTaskStillActive(currentTask)) {
+        logger.info('Reminder dilewati karena task sudah tidak aktif.', { taskId: task.id });
+        return;
       }
+      await sendReminderWithRetry(client, currentTask.chat_id, `[Deadline] "${currentTask.title}" — ${formatDeadline(currentTask.deadline_ms)}`, task.id);
     });
     taskJobs.push(job);
   }
@@ -101,6 +109,24 @@ export function scheduleReminders(task, client) {
 
 export function rescheduleTaskReminders(task, client) {
   scheduleReminders(task, client);
+}
+
+export function scheduleSnooze(task, delayMs, client) {
+  const job = schedule.scheduleJob(new Date(Date.now() + delayMs), async () => {
+    const currentTask = getTask(task.id);
+    if (!isTaskStillActive(currentTask)) return;
+    await sendReminderWithRetry(
+      client,
+      currentTask.chat_id,
+      `[Snooze] "${currentTask.title}" — ${formatDeadline(currentTask.deadline_ms)}`,
+      task.id,
+    );
+  });
+  if (job) {
+    const existing = jobs.get(task.id) || [];
+    existing.push(job);
+    jobs.set(task.id, existing);
+  }
 }
 
 function isTaskStillActive(task) {
