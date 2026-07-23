@@ -25,6 +25,26 @@
 
 <section class="panel setting-panel">
   <div>
+    <h2>Registrasi</h2>
+    <p>
+      <% if (registrationEnabled) { %>
+        <strong>Aktif</strong> — bot meminta data diri (nama, usia, gender, pekerjaan, persetujuan) sebelum bisa dipakai.
+      <% } else { %>
+        <strong>Nonaktif</strong> — bot langsung bisa dipakai tanpa mengisi data diri apapun.
+      <% } %>
+    </p>
+  </div>
+  <form method="post" action="/settings/registration">
+    <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
+    <input type="hidden" name="enabled" value="<%= registrationEnabled ? 'false' : 'true' %>">
+    <button class="<%= registrationEnabled ? 'danger' : '' %>" type="submit">
+      <%= registrationEnabled ? 'Matikan Registrasi' : 'Nyalakan Registrasi' %>
+    </button>
+  </form>
+</section>
+
+<section class="panel setting-panel">
+  <div>
     <h2>Mode Saran</h2>
     <p>Bot meminta saran 1 kalimat setelah VN tersimpan, maksimal sampai VN ke-10 per responden.</p>
   </div>

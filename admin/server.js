@@ -11,7 +11,9 @@ import db, {
   updateResearchLog,
   updateRespondent,
   deleteRespondentData,
+  getAppSetting,
   isFeedbackPromptEnabled,
+  isRegistrationEnabled,
   setAppSetting,
 } from '../src/db.js';
 import { calculateExtractionMetrics, calculateWer, parseJsonList, validateGroundTruthTasks } from './metrics.js';
@@ -100,6 +102,7 @@ app.get('/', requireAuth, (req, res) => {
   const stats = getOverviewStats();
   const ops = getOpsStats();
   const feedbackPromptEnabled = isFeedbackPromptEnabled();
+  const registrationEnabled = isRegistrationEnabled();
   const logs = db.prepare(`
     SELECT l.*, r.name, r.age, r.gender, r.occupation
     FROM research_logs l
@@ -122,6 +125,7 @@ app.get('/', requireAuth, (req, res) => {
     logs,
     feedback,
     feedbackPromptEnabled,
+    registrationEnabled,
     fmt,
     success: req.query.success || '',
   });
@@ -131,6 +135,12 @@ app.post('/settings/feedback-prompt', requireAuth, requireCsrf, (req, res) => {
   const enabled = req.body.enabled === 'true';
   setAppSetting('feedback_prompt_enabled', enabled ? 'true' : 'false');
   res.redirect('/?success=' + encodeURIComponent(enabled ? 'Mode saran dinyalakan' : 'Mode saran dimatikan'));
+});
+
+app.post('/settings/registration', requireAuth, requireCsrf, (req, res) => {
+  const enabled = req.body.enabled === 'true';
+  setAppSetting('registration_enabled', enabled ? 'true' : 'false');
+  res.redirect('/?success=' + encodeURIComponent(enabled ? 'Registrasi dinyalakan — bot akan meminta data diri' : 'Registrasi dimatikan — bot langsung bisa dipakai tanpa isi data diri'));
 });
 
 app.get('/review', requireAuth, (req, res) => {

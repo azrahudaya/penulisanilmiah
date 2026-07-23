@@ -133,6 +133,16 @@ db.prepare(`
   ON CONFLICT(key) DO NOTHING
 `).run(Date.now());
 
+db.prepare(`
+  INSERT INTO app_settings (key, value, updated_at)
+  VALUES ('registration_enabled', 'true', ?)
+  ON CONFLICT(key) DO NOTHING
+`).run(Date.now());
+
+export function isRegistrationEnabled() {
+  return getAppSetting('registration_enabled', 'true') === 'true';
+}
+
 export function insertTask({ chatId, title, deadlineMs }) {
   const now = Date.now();
   const stmt = db.prepare(`INSERT INTO tasks (chat_id, title, deadline_ms, status, created_at, updated_at)

@@ -7,6 +7,7 @@ import {
   startRespondentRegistration,
   updateRespondent,
   getRespondentByRegistrationPollMessageId,
+  isRegistrationEnabled,
 } from '../db.js';
 import { cachePollOptions, extractBareMessageId } from '../whatsapp/patches.js';
 import { sendTrackedPoll, monitorPollVotes } from '../whatsapp/poll-tracker.js';
@@ -17,6 +18,7 @@ import { logger } from '../logger.js';
 export async function handleRegistrationGate(message) {
   const chatId = message.from;
   if (message.fromMe) return false;
+  if (!isRegistrationEnabled()) return false;
 
   const body = message.type === 'chat' ? message.body.trim() : '';
   const lower = body.toLowerCase();
