@@ -27,21 +27,29 @@ function waitForSentPoll(chatId, pollName) {
 
 // Interval-polls getPollVotes() as fallback when vote_update event doesn't fire.
 // Uses dynamic import to avoid circular dependency with handlers/poll.js.
+// Stops automatically after 5 consecutive failures (e.g. incompatible WA version).
 export function monitorPollVotes(pollMessage) {
   if (!pollMessage) return;
   let checking = false;
+  let consecutiveErrors = 0;
   const timer = setInterval(async () => {
     if (checking) return;
     checking = true;
     try {
       const votes = await pollMessage.getPollVotes();
+      consecutiveErrors = 0;
       const vote = votes.find((item) => item.selectedOptions?.length);
       if (!vote) return;
       clearInterval(timer);
       const { handlePollVote } = await import('../handlers/poll.js');
       await handlePollVote(vote);
     } catch (err) {
-      logger.warn('Gagal memeriksa hasil polling.', { message: err.message });
+      consecutiveErrors++;
+      if (consecutiveErrors >= 5) {
+        clearInterval(timer);
+        logger.warn('Monitor polling dihentikan (getPollVotes tidak tersedia di versi ini).', { message: err.message });
+        return;
+      }
     } finally {
       checking = false;
     }
