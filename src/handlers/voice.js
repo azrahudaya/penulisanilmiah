@@ -101,6 +101,7 @@ export async function handleVoiceMessage(message) {
   const existingPending = getActivePendingConfirmation(chatId);
   if (existingPending) {
     const summary = formatTasksForConfirmation(existingPending.tasks);
+    await reactToMessage(message, '❌');
     await message.reply(`Ada konfirmasi pending:\n${summary}\n\nKetik: ya / edit / batal`);
     return;
   }

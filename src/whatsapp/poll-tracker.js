@@ -36,20 +36,25 @@ export function monitorPollVotes(pollMessage) {
     if (checking) return;
     checking = true;
     try {
-      const votes = await pollMessage.getPollVotes();
-      consecutiveErrors = 0;
+      let votes;
+      try {
+        votes = await pollMessage.getPollVotes();
+        consecutiveErrors = 0;
+      } catch (err) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= 5) {
+          clearInterval(timer);
+          logger.warn('Monitor polling dihentikan (getPollVotes tidak tersedia di versi ini).', { message: err.message });
+        }
+        return;
+      }
       const vote = votes.find((item) => item.selectedOptions?.length);
       if (!vote) return;
       clearInterval(timer);
       const { handlePollVote } = await import('../handlers/poll.js');
       await handlePollVote(vote);
     } catch (err) {
-      consecutiveErrors++;
-      if (consecutiveErrors >= 5) {
-        clearInterval(timer);
-        logger.warn('Monitor polling dihentikan (getPollVotes tidak tersedia di versi ini).', { message: err.message });
-        return;
-      }
+      logger.error('Poll vote handler error dari monitor.', { message: err.message });
     } finally {
       checking = false;
     }

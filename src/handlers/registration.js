@@ -18,20 +18,23 @@ import { logger } from '../logger.js';
 export async function handleRegistrationGate(message) {
   const chatId = message.from;
   if (message.fromMe) return false;
-  if (!isRegistrationEnabled()) return false;
+  if (!isRegistrationEnabled()) {
+    // Registrasi dimatikan, tapi user yang registrasi belum selesai tetap harus ditahan
+    // supaya data penelitian tidak tercorrupt dengan record tidak lengkap.
+    const respondent = getRespondent(chatId);
+    const incomplete = respondent && respondent.registration_step !== 'completed' && respondent.consent_status !== 'consented';
+    if (incomplete) {
+      await message.reply('Registrasi sedang ditutup. Coba lagi nanti.');
+      return true;
+    }
+    return false;
+  }
 
   const body = message.type === 'chat' ? message.body.trim() : '';
   const lower = body.toLowerCase();
   let respondent = getRespondent(chatId);
 
-  if (!respondent || lower === 'register') {
-    startRespondentRegistration(chatId);
-    updateRespondent(chatId, { registrationStep: 'name' });
-    await message.reply(`Halo! Sebelum mulai, perlu data singkat untuk penelitian.\n\nNama kamu?`);
-    return true;
-  }
-
-  if (respondent.registration_step === 'not_started') {
+  if (!respondent || lower === 'register' || respondent.registration_step === 'not_started') {
     startRespondentRegistration(chatId);
     updateRespondent(chatId, { registrationStep: 'name' });
     await message.reply(`Halo! Sebelum mulai, perlu data singkat untuk penelitian.\n\nNama kamu?`);
@@ -152,7 +155,7 @@ export async function sendGenderPoll(chatId, message) {
 
 export async function sendConsentPoll(chatId, message) {
   const CONSENT_OPTIONS = ['Ya, saya setuju', 'Tidak'];
-  const text = `Data kamu dipakai untuk penelitian ilmiah dan dijaga kerahasiaannya.\n\nApakah kamu setuju?`;
+  const text = `Setuju data kamu dipakai untuk penelitian ilmiah? (dijaga kerahasiaannya)`;
   try {
     const pollMessage = await sendTrackedPoll(
       chatId,

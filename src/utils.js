@@ -6,6 +6,8 @@ export function isGroupChatId(chatId) {
   return String(chatId || '').endsWith('@g.us');
 }
 
+// Fast-path bypass untuk ⏳ dan registration gate — hanya command yang perlu akses
+// sebelum koneksi WA siap penuh (researchstats bisa dipanggil kapanpun tanpa delay).
 export function isAdminCommand(body = '') {
   const [cmd] = String(body).trim().toLowerCase().split(/\s+/);
   return cmd === 'researchstats';

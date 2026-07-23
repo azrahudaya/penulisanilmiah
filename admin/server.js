@@ -298,12 +298,16 @@ app.post('/respondents/:id/edit', requireAuth, requireCsrf, (req, res) => {
   const consentStatus = String(req.body.consent_status || '').trim();
   const registrationStep = String(req.body.registration_step || '').trim();
   if (name) updates.name = name;
-  if (Number.isInteger(age) && age >= 10 && age <= 100) updates.age = age;
   if (VALID_GENDERS.has(gender)) updates.gender = gender;
   if (occupation) updates.occupation = occupation;
-  updates.reminderOffsets = JSON.stringify(['m10', 'due']);
   if (VALID_CONSENT_STATUSES.has(consentStatus)) updates.consentStatus = consentStatus;
   if (VALID_REGISTRATION_STEPS.has(registrationStep)) updates.registrationStep = registrationStep;
+  if (req.body.age !== '' && req.body.age !== undefined) {
+    if (!Number.isInteger(age) || age < 10 || age > 100) {
+      return res.redirect('/respondents/' + req.params.id + '/edit?error=' + encodeURIComponent('Usia harus angka antara 10–100'));
+    }
+    updates.age = age;
+  }
   updateRespondent(respondent.chat_id, updates);
   res.redirect('/respondents/' + req.params.id + '/edit?success=' + encodeURIComponent('Data disimpan'));
 });
@@ -591,7 +595,9 @@ function formatRespondent(row) {
 }
 
 function formatWhatsAppNumber(chatId) {
-  const digits = String(chatId || '').split('@')[0].replace(/\D/g, '');
+  const id = String(chatId || '');
+  if (id.endsWith('@lid')) return '(pengguna @lid)';
+  const digits = id.split('@')[0].replace(/\D/g, '');
   return digits || '-';
 }
 

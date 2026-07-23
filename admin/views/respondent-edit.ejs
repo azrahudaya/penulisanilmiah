@@ -19,10 +19,11 @@
     <input type="text" name="name" value="<%= respondent.name || '' %>">
 
     <label>Usia</label>
-    <input type="number" name="age" value="<%= respondent.age || '' %>" min="0" max="120">
+    <input type="number" name="age" value="<%= respondent.age || '' %>" min="10" max="100">
 
     <label>Gender</label>
     <select name="gender">
+      <option value="" <%= !respondent.gender ? 'selected' : '' %>>— Pilih —</option>
       <option value="Laki-laki" <%= respondent.gender === 'Laki-laki' ? 'selected' : '' %>>Laki-laki</option>
       <option value="Perempuan" <%= respondent.gender === 'Perempuan' ? 'selected' : '' %>>Perempuan</option>
     </select>
@@ -31,7 +32,7 @@
     <input type="text" name="occupation" value="<%= respondent.occupation || '' %>">
 
     <label>Reminder</label>
-    <input type="text" value="H-10 menit, Saat deadline" disabled>
+    <input type="text" value="<%= respondent.reminderText || '-' %>" disabled>
 
     <label>Consent Status</label>
     <select name="consent_status">
