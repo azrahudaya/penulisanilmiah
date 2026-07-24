@@ -102,7 +102,8 @@ export async function handleVoiceMessage(message) {
   if (existingPending) {
     const summary = formatTasksForConfirmation(existingPending.tasks);
     await reactToMessage(message, '❌');
-    await message.reply(`Ada konfirmasi pending:\n${summary}\n\nKetik: ya / edit / batal`);
+    // Resend poll so user gets a fresh one (old poll may have been already voted)
+    await sendConfirmationPrompt(message, chatId, summary, existingPending);
     return;
   }
 

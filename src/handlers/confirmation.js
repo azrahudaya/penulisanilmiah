@@ -88,13 +88,21 @@ export async function sendConfirmationPrompt(message, chatId, summary, pendingCo
       chatId,
       new Poll(buildConfirmationPollTitle(summary), CONFIRMATION_OPTIONS, { allowMultipleAnswers: false })
     );
-    const pollMessageId = extractBareMessageId(pollMessage?.id?._serialized);
+
+    // Log raw ID for diagnosing @lid pollMessageId extraction failures
+    const rawSerialized = pollMessage?.id?._serialized;
+    const rawBareId = pollMessage?.id?.id;
+    const pollMessageId = extractBareMessageId(rawSerialized) || rawBareId || '';
+    logger.info('Poll konfirmasi terkirim.', { chatId, pollMessageId, rawSerialized, rawBareId });
+
     if (pollMessageId) {
       await cachePollOptions(pollMessageId, CONFIRMATION_OPTIONS);
       pendingConfirmation.pollMessageId = pollMessageId;
       pendingConfirmation.confirmationChannel = 'poll';
       pendingConfirmations.set(chatId, pendingConfirmation);
       upsertPendingConfirmation(pendingConfirmation);
+    } else {
+      logger.warn('pollMessageId kosong setelah pengiriman poll.', { chatId, rawSerialized, rawBareId });
     }
     monitorPollVotes(pollMessage);
   } catch (err) {

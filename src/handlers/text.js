@@ -27,6 +27,7 @@ import {
 } from './confirmation.js';
 import { handlePendingFeedbackReply } from './feedback.js';
 import { isAdminMessage, isSmallTalkText, formatReminderPreference } from '../utils.js';
+import { reactToMessage } from '../whatsapp/reactions.js';
 
 export async function handleTextCommand(message) {
   const chatId = message.from;
@@ -119,7 +120,8 @@ export async function handleNaturalTextTask(message, text) {
   const existingPending = getActivePendingConfirmation(chatId);
   if (existingPending) {
     const summary = formatTasksForConfirmation(existingPending.tasks);
-    await message.reply(`Ada konfirmasi pending:\n${summary}\n\nKetik: ya / edit / batal`);
+    await reactToMessage(message, '❌');
+    await sendConfirmationPrompt(message, chatId, summary, existingPending);
     return;
   }
 

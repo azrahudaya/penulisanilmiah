@@ -1,7 +1,8 @@
-import { ctx } from '../context.js';
+import { ctx, pendingConfirmations } from '../context.js';
 import {
   getPendingConfirmationByPollMessageId,
   getPendingConfirmation,
+  upsertPendingConfirmation,
   getRespondent,
   updateRespondent,
 } from '../db.js';
@@ -52,6 +53,14 @@ export async function handlePollVote(vote) {
   const pendingById = getPendingConfirmationByPollMessageId(pollMessageId);
   const pendingByChat = pollChatId ? getPendingConfirmation(pollChatId) : null;
   const pending = pendingById || (!pendingByChat?.pollMessageId ? pendingByChat : null);
+
+  // Retroactively save poll ID when found via chatId fallback (e.g. @lid sendMessage returned null)
+  if (!pendingById && pending && pollMessageId && !pending.pollMessageId) {
+    pending.pollMessageId = pollMessageId;
+    pendingConfirmations.set(pending.chatId, pending);
+    upsertPendingConfirmation(pending);
+    logger.info('pollMessageId disimpan retroaktif.', { chatId: pending.chatId, pollMessageId });
+  }
 
   if (!pending || !selected) {
     logger.warn('Poll vote: DB miss atau selected kosong, fallback via voter.', { pollMessageId, voterChatId, selected: selected || 'none' });

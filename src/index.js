@@ -102,6 +102,13 @@ client.on('message', async (message) => {
 
 client.on('message_create', (message) => {
   if (!message.fromMe || message.type !== 'poll_creation') return;
+  logger.info('Poll creation terkirim (message_create).', {
+    to: message.to,
+    idSerialized: message.id?._serialized,
+    idBare: message.id?.id,
+    pollName: message.pollName?.slice(0, 40),
+    pendingTrackers: pendingPollTrackers.size,
+  });
   for (const tracker of pendingPollTrackers) {
     if (message.to !== tracker.chatId || !findSentPollMessage([message], tracker.pollName)) continue;
     tracker.resolve(message);
