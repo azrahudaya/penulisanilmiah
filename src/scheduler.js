@@ -1,4 +1,4 @@
-﻿import schedule from 'node-schedule';
+import schedule from 'node-schedule';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
 import timezone from 'dayjs/plugin/timezone.js';
@@ -8,6 +8,50 @@ import { logger } from './logger.js';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
+
+// ── Escalation config ──────────────────────────────────────────────────────────
+// After the "due" reminder fires, keep nudging if the task stays pending.
+const MAX_ESCALATIONS = 3;
+const ESCALATION_DELAYS_MS = [5 * 60 * 1000, 15 * 60 * 1000, 30 * 60 * 1000];
+
+// ── Send-time jitter ───────────────────────────────────────────────────────────
+// Adds a random offset so reminders don't fire at the exact scheduled second.
+// Helps avoid identical-timestamp fingerprinting by WhatsApp's anti-spam layer.
+const JITTER_MS = 30_000; // ±30 seconds
+
+// ── Message templates ──────────────────────────────────────────────────────────
+const REMINDER_TEMPLATES = [
+  (label, title, deadline) => `[${label}] "${title}" — ${deadline}`,
+  (label, title, deadline) => `🔔 Pengingat ${label}: ${title}\n⏰ ${deadline}`,
+  (label, title, deadline) => `Hei, waktunya!\n"${title}" — ${deadline} [${label}]`,
+  (label, title, deadline) => `Reminder:\n${title}\n📅 ${deadline}`,
+  (label, title, deadline) => `Jangan lupa: ${title}\n(${deadline}) [${label}]`,
+];
+
+const ESCALATION_TEMPLATES = [
+  (title, deadline, n) => `📌 Pengingat ke-${n}: "${title}" belum selesai (${deadline})`,
+  (title, deadline, n) => `Hei! "${title}" masih pending — deadline: ${deadline} ⏳`,
+  (title, deadline, n) => `Follow-up ke-${n}: "${title}"\n⏰ ${deadline}`,
+  (title, deadline, n) => `Masih ada yang belum selesai:\n"${title}" (${deadline})`,
+];
+
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function jitter() {
+  return Math.floor(Math.random() * 2 * JITTER_MS) - JITTER_MS;
+}
+
+function buildReminderText(label, title, deadline) {
+  return pickRandom(REMINDER_TEMPLATES)(label, title, deadline);
+}
+
+function buildEscalationText(title, deadline, escalationIndex) {
+  return pickRandom(ESCALATION_TEMPLATES)(title, deadline, escalationIndex + 1);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 
 const jobs = new Map();
 export const REMINDER_OFFSET_OPTIONS = [
@@ -55,6 +99,13 @@ export function cancelReminders(taskId) {
   jobs.delete(taskId);
 }
 
+function addJob(taskId, job) {
+  if (!job) return;
+  const existing = jobs.get(taskId) || [];
+  existing.push(job);
+  jobs.set(taskId, existing);
+}
+
 async function sendReminderWithRetry(client, chatId, text, taskId) {
   const delays = [0, 10_000, 30_000];
   for (let i = 0; i < delays.length; i++) {
@@ -73,38 +124,66 @@ async function sendReminderWithRetry(client, chatId, text, taskId) {
   }
 }
 
+function scheduleEscalation(task, client, escalationIndex) {
+  if (escalationIndex >= MAX_ESCALATIONS) return;
+  const delayMs = ESCALATION_DELAYS_MS[escalationIndex];
+  // Positive jitter only so escalation never fires before its floor
+  const fireAt = Date.now() + delayMs + Math.floor(Math.random() * JITTER_MS);
+  const job = schedule.scheduleJob(new Date(fireAt), async () => {
+    const currentTask = getTask(task.id);
+    if (!isTaskStillActive(currentTask)) {
+      logger.info('Eskalasi dilewati, task sudah tidak aktif.', { taskId: task.id, escalationIndex });
+      return;
+    }
+    const deadline = formatDeadline(currentTask.deadline_ms);
+    const msg = buildEscalationText(currentTask.title, deadline, escalationIndex);
+    await sendReminderWithRetry(client, currentTask.chat_id, msg, task.id);
+    logger.info('Eskalasi reminder terkirim.', { taskId: task.id, escalationIndex });
+    scheduleEscalation(currentTask, client, escalationIndex + 1);
+  });
+  addJob(task.id, job);
+}
+
 export function scheduleReminders(task, client) {
   cancelReminders(task.id);
   const now = Date.now();
-  const taskJobs = [];
+  let jobCount = 0;
   const { activeKeys, activeOffsets } = getActiveOffsets(task.chat_id);
+
   for (const offset of activeOffsets) {
-    const remindAt = task.deadline_ms - offset.ms;
+    const remindAt = task.deadline_ms - offset.ms + jitter();
     if (remindAt <= now) continue;
+    const isDue = offset.key === 'due';
     const job = schedule.scheduleJob(new Date(remindAt), async () => {
       const currentTask = getTask(task.id);
       if (!isTaskStillActive(currentTask)) {
         logger.info('Reminder dilewati karena task sudah tidak aktif.', { taskId: task.id });
         return;
       }
-      const prefix = offset.key === 'due' ? 'Deadline' : offset.label;
-      await sendReminderWithRetry(client, currentTask.chat_id, `[${prefix}] "${currentTask.title}" — ${formatDeadline(currentTask.deadline_ms)}`, task.id);
+      const label = isDue ? 'Deadline' : offset.label;
+      const msg = buildReminderText(label, currentTask.title, formatDeadline(currentTask.deadline_ms));
+      await sendReminderWithRetry(client, currentTask.chat_id, msg, task.id);
+      if (isDue) scheduleEscalation(currentTask, client, 0);
     });
-    taskJobs.push(job);
+    addJob(task.id, job);
+    jobCount++;
   }
-  if (!taskJobs.length && task.deadline_ms > now) {
-    const job = schedule.scheduleJob(new Date(task.deadline_ms), async () => {
+
+  // Fallback: if all offsets were in the past but deadline itself is future
+  if (!jobCount && task.deadline_ms > now) {
+    const fireAt = task.deadline_ms + jitter();
+    const job = schedule.scheduleJob(new Date(fireAt), async () => {
       const currentTask = getTask(task.id);
-      if (!isTaskStillActive(currentTask)) {
-        logger.info('Reminder dilewati karena task sudah tidak aktif.', { taskId: task.id });
-        return;
-      }
-      await sendReminderWithRetry(client, currentTask.chat_id, `[Deadline] "${currentTask.title}" — ${formatDeadline(currentTask.deadline_ms)}`, task.id);
+      if (!isTaskStillActive(currentTask)) return;
+      const msg = buildReminderText('Deadline', currentTask.title, formatDeadline(currentTask.deadline_ms));
+      await sendReminderWithRetry(client, currentTask.chat_id, msg, task.id);
+      scheduleEscalation(currentTask, client, 0);
     });
-    taskJobs.push(job);
+    addJob(task.id, job);
+    jobCount++;
   }
-  if (taskJobs.length) jobs.set(task.id, taskJobs);
-  logger.info('Reminder dijadwalkan.', { taskId: task.id, jobCount: taskJobs.length, offsets: activeKeys });
+
+  logger.info('Reminder dijadwalkan.', { taskId: task.id, jobCount, offsets: activeKeys });
 }
 
 export function rescheduleTaskReminders(task, client) {
@@ -112,21 +191,14 @@ export function rescheduleTaskReminders(task, client) {
 }
 
 export function scheduleSnooze(task, delayMs, client) {
-  const job = schedule.scheduleJob(new Date(Date.now() + delayMs), async () => {
+  const job = schedule.scheduleJob(new Date(Date.now() + delayMs + jitter()), async () => {
     const currentTask = getTask(task.id);
     if (!isTaskStillActive(currentTask)) return;
-    await sendReminderWithRetry(
-      client,
-      currentTask.chat_id,
-      `[Snooze] "${currentTask.title}" — ${formatDeadline(currentTask.deadline_ms)}`,
-      task.id,
-    );
+    const msg = buildReminderText('Snooze', currentTask.title, formatDeadline(currentTask.deadline_ms));
+    await sendReminderWithRetry(client, currentTask.chat_id, msg, task.id);
+    scheduleEscalation(currentTask, client, 0);
   });
-  if (job) {
-    const existing = jobs.get(task.id) || [];
-    existing.push(job);
-    jobs.set(task.id, existing);
-  }
+  addJob(task.id, job);
 }
 
 function isTaskStillActive(task) {

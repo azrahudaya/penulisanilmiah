@@ -137,7 +137,11 @@ async function notifyMissedReminders() {
   });
 
   let notified = 0;
+  let userIndex = 0;
   for (const [chatId, tasks] of byChat) {
+    // Stagger sends across users to avoid burst flagging by WhatsApp
+    if (userIndex > 0) await new Promise((r) => setTimeout(r, 1500 + Math.floor(Math.random() * 1000)));
+    userIndex++;
     const visible = tasks.slice(0, 5).map((task) => {
       const deadline = dayjs(task.deadline_ms).tz(config.timezone).format('DD MMM YYYY HH:mm');
       return `- #${task.id} ${task.title} - ${deadline}`;
