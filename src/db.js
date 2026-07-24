@@ -395,18 +395,17 @@ export function updateRespondent(chatId, updates = {}) {
 }
 
 export function getRespondentByRegistrationPollMessageId(pollMessageId) {
-  // Coba exact match dulu, lalu LIKE suffix untuk format lama (full _serialized)
   let row = db.prepare(`
     SELECT * FROM research_respondents
-    WHERE gender_poll_message_id = ?1 OR reminder_poll_message_id = ?1 OR consent_poll_message_id = ?1
-  `).get(pollMessageId);
+    WHERE gender_poll_message_id = ? OR reminder_poll_message_id = ? OR consent_poll_message_id = ?
+  `).get(pollMessageId, pollMessageId, pollMessageId);
   if (!row) {
     row = db.prepare(`
       SELECT * FROM research_respondents
-      WHERE gender_poll_message_id LIKE '%_' || ?1
-        OR reminder_poll_message_id LIKE '%_' || ?1
-        OR consent_poll_message_id LIKE '%_' || ?1
-    `).get(pollMessageId);
+      WHERE gender_poll_message_id LIKE '%_' || ?
+        OR reminder_poll_message_id LIKE '%_' || ?
+        OR consent_poll_message_id LIKE '%_' || ?
+    `).get(pollMessageId, pollMessageId, pollMessageId);
   }
   return row || null;
 }
