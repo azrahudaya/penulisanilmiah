@@ -41,7 +41,14 @@ export async function completePendingConfirmation(chatId, action, reply) {
     if (researchLogId) updateResearchLog(researchLogId, { confirmationStatus: action });
     const saved = insertTasks(toInsert);
     saved.forEach((task) => scheduleReminders(task, ctx.client));
-    await reply(formatSavedReminderMessage(saved));
+    const now = Date.now();
+    const pastTasks = saved.filter((t) => t.deadline_ms < now);
+    let replyText = formatSavedReminderMessage(saved);
+    if (pastTasks.length) {
+      const ids = pastTasks.map((t) => `#${t.id}`).join(', ');
+      replyText += `\n\n⚠️ Waktu task ${ids} sudah lewat — reminder tidak akan dikirim.\nGunakan: reschedule <id> <YYYY-MM-DD HH:mm>`;
+    }
+    await reply(replyText);
     await maybeAskForFeedback(chatId);
     return;
   }

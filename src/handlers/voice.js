@@ -101,8 +101,15 @@ export async function handleVoiceMessage(message) {
   const existingPending = getActivePendingConfirmation(chatId);
   if (existingPending) {
     const summary = formatTasksForConfirmation(existingPending.tasks);
+    const now = Date.now();
+    const allPast = existingPending.tasks.every(
+      (t) => new Date(t.deadline_iso || 0).getTime() < now,
+    );
     await reactToMessage(message, '❌');
-    // Resend poll so user gets a fresh one (old poll may have been already voted)
+    const prefix = allPast
+      ? 'Ada konfirmasi pending (waktunya sudah lewat). Simpan untuk edit atau ketik batal:'
+      : 'Ada konfirmasi pending. Selesaikan dulu:';
+    await message.reply(prefix);
     await sendConfirmationPrompt(message, chatId, summary, existingPending);
     return;
   }
