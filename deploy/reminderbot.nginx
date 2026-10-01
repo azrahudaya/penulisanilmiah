@@ -1,7 +1,7 @@
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    server_name bot.azrahudaya.me 43.153.199.252;
+    server_name bot.ajra.tech 43.153.199.252;
 
     client_max_body_size 20m;
 
